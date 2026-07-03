@@ -1,0 +1,13 @@
+{
+  "files.autoSave": "afterDelay",
+  "dart.flutterSdkPath": "C:\\Development\\flutter",
+  "python.analysis.typeCheckingMode": "strict",
+  "git.autofetch": true,
+  "python.languageServer": "Pylance",
+  "python.analysis.enableEditableInstalls": false,
+  "python.analysis.enableMangleName": true,
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportUnusedImport": "none",
+    "reportUnusedVariable": "none"
+  }
+}
