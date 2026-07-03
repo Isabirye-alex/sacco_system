@@ -16,7 +16,7 @@ from app.core.database import Base  # noqa: E402
 import app.models  # noqa: E402  (populates Base.metadata)
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", settings.ONLINE_DATABASE_URL)  # Use ONLINE_DATABASE_URL for migrations
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

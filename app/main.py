@@ -120,18 +120,13 @@ def _run_dormancy_sweep_job():
 
 @app.on_event("startup")
 def on_startup():
-    # NOTE: In production, schema changes should be applied via Alembic
-    # migrations (see /alembic). create_all() is a convenience for local
-    # development/demo environments only and is a no-op for tables that
-    # already exist.
-    if settings.ENVIRONMENT == "development":
-        Base.metadata.create_all(bind=engine)
+    # if settings.ENVIRONMENT == "development":
+    #     Base.metadata.create_all(bind=engine)
 
     scheduler.add_job(_run_dormancy_sweep_job, "interval", hours=24, id="dormancy_sweep", replace_existing=True)
     scheduler.start()
     logger.info("SACCO API started in '%s' environment.", settings.ENVIRONMENT)
-
-
+    
 @app.on_event("shutdown")
 def on_shutdown():
     scheduler.shutdown(wait=False)

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str 
+    ONLINE_DATABASE_URL: str
 
     # Security
     SECRET_KEY: str 
@@ -41,10 +42,9 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
-
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings() # pyright: ignore[reportCallIssue]
 
 
 settings = get_settings()
