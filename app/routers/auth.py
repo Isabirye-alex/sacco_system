@@ -15,7 +15,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_optional_current_user
 from app.models.user import User
 from app.schemas.user import (
     PasswordChangeRequest,
@@ -24,12 +24,17 @@ from app.schemas.user import (
     UserCreate,
     UserRead,
 )
+from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, db: Session = Depends(get_db)):
+def register(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    actor: User | None = Depends(get_optional_current_user),
+):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A user with this email already exists.")
     user = User(
@@ -40,6 +45,12 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
         member_id=payload.member_id,
     )
     db.add(user)
+    db.flush()
+    record_audit(
+        db, actor_user_id=actor.id if actor else None, action="auth.user_register", entity_type="User",
+        entity_id=user.id,
+        details=f"Registered {user.email} as {user.role.value}" + (" (self-registered)" if not actor else ""),
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -59,7 +70,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
     from datetime import datetime
 
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.utcnow() # type: ignore
     db.commit()
 
     return TokenResponse(

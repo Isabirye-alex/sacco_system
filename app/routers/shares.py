@@ -19,6 +19,7 @@ from app.schemas.misc import (
     ShareTransactionCreate,
     ShareTransactionRead,
 )
+from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/api/v1/shares", tags=["Shares Management"])
 
@@ -27,7 +28,7 @@ MANAGER_ROLES = (UserRole.ADMIN, UserRole.MANAGER)
 
 @router.post("/products", response_model=ShareProductRead, status_code=status.HTTP_201_CREATED)
 def create_share_product(
-    payload: ShareProductCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*MANAGER_ROLES))
+    payload: ShareProductCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*MANAGER_ROLES)) # type: ignore
 ):
     product = ShareProduct(**payload.model_dump())
     db.add(product)
@@ -56,7 +57,7 @@ def record_share_transaction(
     product_id: str,
     payload: ShareTransactionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*MANAGER_ROLES, UserRole.ACCOUNTANT)),
+    current_user: User = Depends(require_roles(*MANAGER_ROLES, UserRole.ACCOUNTANT)), # type: ignore
 ):
     member = db.get(Member, member_id)
     if not member:
@@ -110,16 +111,21 @@ def record_share_transaction(
         board_approved=False,
     )
     db.add(txn)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action=f"shares.{payload.txn_type.value}", entity_type="ShareHolding",
+        entity_id=holding.id, details=f"{payload.txn_type.value} of {payload.number_of_shares} share(s) for {member.member_number}",
+    )
     db.commit()
     db.refresh(txn)
     return txn
 
 
 @router.post("/dividends/declare", status_code=status.HTTP_201_CREATED)
-def declare_dividend(
+def declare_dividend( # type: ignore
     payload: DividendDeclarationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*MANAGER_ROLES)),
+    current_user: User = Depends(require_roles(*MANAGER_ROLES)), # type: ignore
 ):
     """
     Declares a per-share dividend rate and generates a pending payout per
@@ -136,7 +142,12 @@ def declare_dividend(
         amount = holding.number_of_shares * payload.rate_per_share
         total += amount
         db.add(DividendPayout(declaration_id=declaration.id, member_id=holding.member_id, amount=amount))
-    declaration.total_amount = total
+    declaration.total_amount = total # type: ignore
 
+    record_audit(
+        db, actor_user_id=current_user.id, action="shares.dividend_declare", entity_type="DividendDeclaration",
+        entity_id=declaration.id,
+        details=f"Declared {payload.financial_year} dividend at {payload.rate_per_share}/share, UGX {total} to {len(holdings)} holding(s)",
+    )
     db.commit()
-    return {"declaration_id": declaration.id, "total_amount": str(total), "members_paid": len(holdings)}
+    return {"declaration_id": declaration.id, "total_amount": str(total), "members_paid": len(holdings)} # type: ignore

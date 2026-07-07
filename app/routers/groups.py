@@ -19,6 +19,7 @@ from app.schemas.misc import (
     GroupRead,
     MyGroupMembershipRead,
 )
+from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/api/v1/groups", tags=["Group Management"])
 
@@ -42,9 +43,14 @@ def list_member_group_memberships(
 
 
 @router.post("", response_model=GroupRead, status_code=status.HTTP_201_CREATED)
-def create_group(payload: GroupCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*MANAGER_ROLES))):
+def create_group(payload: GroupCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*MANAGER_ROLES))): # type: ignore
     group = MemberGroup(**payload.model_dump())
     db.add(group)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="group.create", entity_type="MemberGroup",
+        entity_id=group.id, details=f"Created group {group.name}",
+    )
     db.commit()
     db.refresh(group)
     return group
@@ -60,7 +66,7 @@ def add_group_member(
     group_id: str,
     payload: GroupMembershipCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*MANAGER_ROLES)),
+    current_user: User = Depends(require_roles(*MANAGER_ROLES)), # type: ignore
 ):
     group = db.get(MemberGroup, group_id)
     if not group:
@@ -76,6 +82,10 @@ def add_group_member(
 
     membership = GroupMembership(group_id=group_id, member_id=payload.member_id, role=role)
     db.add(membership)
+    record_audit(
+        db, actor_user_id=current_user.id, action="group.member_add", entity_type="MemberGroup",
+        entity_id=group_id, details=f"Added {member.member_number} to {group.name} as {role.value}",
+    )
     db.commit()
     return {"id": membership.id, "group_id": group_id, "member_id": payload.member_id, "role": role.value}
 
@@ -85,13 +95,18 @@ def record_contribution(
     group_id: str,
     payload: GroupContributionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*MANAGER_ROLES, UserRole.TELLER)),
+    current_user: User = Depends(require_roles(*MANAGER_ROLES, UserRole.TELLER)), # type: ignore
 ):
     group = db.get(MemberGroup, group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found.")
     contribution = GroupContribution(group_id=group_id, **payload.model_dump())
     db.add(contribution)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="group.contribution_record", entity_type="MemberGroup",
+        entity_id=group_id, details=f"Recorded contribution of {payload.amount} in {group.name}",
+    )
     db.commit()
     db.refresh(contribution)
     return contribution

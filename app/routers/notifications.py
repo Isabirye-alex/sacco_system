@@ -31,7 +31,7 @@ def _send_in_background(notification_id: str):
         try:
             dispatch(notification)
             notification.status = NotificationStatus.SENT
-            notification.sent_at = datetime.utcnow()
+            notification.sent_at = datetime.utcnow() # type: ignore
         except Exception as exc:  # pragma: no cover - defensive
             notification.status = NotificationStatus.FAILED
             notification.error_message = str(exc)
@@ -45,7 +45,7 @@ def send_notification(
     payload: NotificationCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # type: ignore
 ):
     notification = queue_notification(
         db=db,

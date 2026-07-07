@@ -51,3 +51,31 @@ class RefreshRequest(BaseModel):
 class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class AuditLogRead(BaseModel):
+    id: str
+    actor_user_id: Optional[str] = None
+    actor_name: Optional[str] = None
+    actor_email: Optional[str] = None
+    action: str
+    entity_type: str
+    entity_id: Optional[str] = None
+    details: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_with_actor(cls, log) -> "AuditLogRead":
+        return cls(
+            id=log.id,
+            actor_user_id=log.actor_user_id,
+            actor_name=log.actor.full_name if log.actor else None,
+            actor_email=log.actor.email if log.actor else None,
+            action=log.action,
+            entity_type=log.entity_type,
+            entity_id=log.entity_id,
+            details=log.details,
+            created_at=log.created_at,
+        )

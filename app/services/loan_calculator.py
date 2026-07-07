@@ -42,9 +42,9 @@ def build_reducing_balance_schedule(
         else:
             principal_due = _round(Decimal(installment) - interest_due)
         due_date = start_date + relativedelta(months=i)
-        schedule.append((i, due_date, principal_due, interest_due))
+        schedule.append((i, due_date, principal_due, interest_due)) # type: ignore
         balance -= principal_due
-    return schedule
+    return schedule # type: ignore
 
 
 def calculate_par(overdue_outstanding: Decimal, total_outstanding: Decimal) -> Decimal:

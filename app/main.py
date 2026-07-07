@@ -1,14 +1,7 @@
-"""
-SACCO Management System - FastAPI application entrypoint.
-
-Wires together all module routers (Member Management, Savings, Credit &
-Loans, Accounting, HR & Payroll, Shares, Notifications, Group Management,
-Risk & Compliance, System Administration), global exception handling, CORS,
-and a background scheduler for the dormancy sweep job.
-"""
 import logging
+from contextlib import asynccontextmanager
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from fastapi import FastAPI, Request, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
@@ -25,6 +18,7 @@ from app.routers import (
     groups,
     loans,
     members,
+    mobile_money,
     notifications,
     payroll,
     risk_compliance,
@@ -36,6 +30,53 @@ from app.services.risk_service import sweep_dormant_members
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sacco")
 
+# ---------------------------------------------------------------------------
+# Background Scheduler Setup & Jobs
+# ---------------------------------------------------------------------------
+scheduler = BackgroundScheduler()
+
+
+def _run_dormancy_sweep_job():
+    db = SessionLocal()
+    try:
+        count = sweep_dormant_members(db)
+        db.commit()
+        if count:
+            logger.info("Dormancy sweep flagged %d member(s) as dormant.", count)
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Modern Lifespan Handler (Replaces @app.on_event)
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- STARTUP LOGIC ---
+    # NOTE: In production, schema changes should be applied via Alembic migrations.
+    if settings.ENVIRONMENT == "development":
+        Base.metadata.create_all(bind=engine)
+
+    scheduler.add_job( # type: ignore
+        _run_dormancy_sweep_job,
+        "interval",
+        hours=24,
+        id="dormancy_sweep",
+        replace_existing=True,
+    )
+    scheduler.start() # type: ignore
+    logger.info("SACCO API started in '%s' environment.", settings.ENVIRONMENT)
+
+    yield  # The application runs here while yielding control
+
+    # --- SHUTDOWN LOGIC ---
+    logger.info("Shutting down SACCO API...")
+    scheduler.shutdown(wait=False) # type: ignore
+
+
+# ---------------------------------------------------------------------------
+# FastAPI App Initialization
+# ---------------------------------------------------------------------------
 app = FastAPI(
     title="SACCO Management System API",
     description=(
@@ -45,6 +86,7 @@ app = FastAPI(
         "management, notifications, and risk & compliance."
     ),
     version="1.0.0",
+    lifespan=lifespan,  # <-- Register the lifespan here
 )
 
 app.add_middleware(
@@ -63,6 +105,7 @@ app.include_router(admin.router)
 app.include_router(members.router)
 app.include_router(savings.router)
 app.include_router(loans.router)
+app.include_router(mobile_money.router)
 app.include_router(accounting.router)
 app.include_router(payroll.router)
 app.include_router(shares.router)
@@ -97,36 +140,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled exception on %s %s", request.method, request.url)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An unexpected error occurred. Please try again or contact support."},
+        content={
+            "detail": "An unexpected error occurred. Please try again or contact support."
+        },
     )
-
-
-# ---------------------------------------------------------------------------
-# Startup / shutdown: schema bootstrap (dev convenience) + scheduled jobs
-# ---------------------------------------------------------------------------
-scheduler = BackgroundScheduler()
-
-
-def _run_dormancy_sweep_job():
-    db = SessionLocal()
-    try:
-        count = sweep_dormant_members(db)
-        db.commit()
-        if count:
-            logger.info("Dormancy sweep flagged %d member(s) as dormant.", count)
-    finally:
-        db.close()
-
-
-@app.on_event("startup")
-def on_startup():
-    # if settings.ENVIRONMENT == "development":
-    #     Base.metadata.create_all(bind=engine)
-
-    scheduler.add_job(_run_dormancy_sweep_job, "interval", hours=24, id="dormancy_sweep", replace_existing=True)
-    scheduler.start()
-    logger.info("SACCO API started in '%s' environment.", settings.ENVIRONMENT)
-    
-@app.on_event("shutdown")
-def on_shutdown():
-    scheduler.shutdown(wait=False)

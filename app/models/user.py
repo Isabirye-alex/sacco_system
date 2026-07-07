@@ -24,7 +24,7 @@ class User(Base, UUIDPKMixin, TimestampMixin):
 
     # Optional link to a member profile if this user is a SACCO member
     member_id: Mapped[Optional[str]] = mapped_column(ForeignKey("members.id"), nullable=True)
-    member: Mapped[Optional["Member"]] = relationship(back_populates="user_account")
+    member: Mapped[Optional["Member"]] = relationship(back_populates="user_account") # type: ignore
 
 
 class AuditLog(Base, UUIDPKMixin):
@@ -35,4 +35,6 @@ class AuditLog(Base, UUIDPKMixin):
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
+
+    actor: Mapped[Optional["User"]] = relationship(foreign_keys=[actor_user_id])

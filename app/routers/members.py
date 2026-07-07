@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.common import Page
 from app.schemas.member import MemberCreate, MemberDetailRead, MemberRead, MemberUpdate
 from app.services.numbering import generate_member_number
+from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/api/v1/members", tags=["Member Management"])
 
@@ -25,7 +26,7 @@ STAFF_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.LOAN_OFFICER, UserRole
 def create_member(
     payload: MemberCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*STAFF_ROLES)),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)), # type: ignore
 ):
     if db.query(Member).filter(Member.national_id == payload.national_id).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A member with this national ID already exists.")
@@ -41,19 +42,24 @@ def create_member(
         physical_address=payload.physical_address,
         occupation=payload.occupation,
         employer_id=payload.employer_id,
-        last_activity_at=datetime.utcnow(),
+        last_activity_at=datetime.utcnow(), # type: ignore
     )
     member.next_of_kin = [NextOfKin(**nok.model_dump()) for nok in payload.next_of_kin]
     member.trusted_contacts = [TrustedContact(**tc.model_dump()) for tc in payload.trusted_contacts]
 
     db.add(member)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="member.create", entity_type="Member",
+        entity_id=member.id, details=f"Created member {member.member_number} ({member.first_name} {member.last_name})",
+    )
     db.commit()
     db.refresh(member)
     return member
 
 
 @router.get("", response_model=Page[MemberRead])
-def list_members(
+def list_members( # type: ignore
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     q: str | None = Query(None, description="Search by name, member number, or national ID"),
@@ -77,7 +83,7 @@ def list_members(
 
     total = len(db.scalars(stmt).all())
     items = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
-    return Page(items=items, total=total, page=page, page_size=page_size)
+    return Page(items=items, total=total, page=page, page_size=page_size) # type: ignore
 
 
 @router.get("/{member_id}", response_model=MemberDetailRead)
@@ -93,13 +99,18 @@ def update_member(
     member_id: str,
     payload: MemberUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*STAFF_ROLES)),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)), # type: ignore
 ):
     member = db.get(Member, member_id)
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(member, field, value)
+    record_audit(
+        db, actor_user_id=current_user.id, action="member.update", entity_type="Member",
+        entity_id=member.id, details=f"Updated fields: {', '.join(changes.keys())}",
+    )
     db.commit()
     db.refresh(member)
     return member
@@ -109,11 +120,15 @@ def update_member(
 def exit_member(
     member_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # type: ignore
 ):
     """Soft-delete: marks the member as EXITED rather than removing records (audit trail)."""
     member = db.get(Member, member_id)
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
     member.status = MemberStatus.EXITED
+    record_audit(
+        db, actor_user_id=current_user.id, action="member.exit", entity_type="Member",
+        entity_id=member.id, details=f"Exited member {member.member_number}",
+    )
     db.commit()

@@ -46,7 +46,7 @@ class GroupContribution(Base, UUIDPKMixin):
     member_id: Mapped[str] = mapped_column(ForeignKey("members.id"), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     contribution_date: Mapped[date] = mapped_column(default=date.today)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
 
     group: Mapped["MemberGroup"] = relationship(back_populates="contributions")
 

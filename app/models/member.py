@@ -30,13 +30,13 @@ class Member(Base, UUIDPKMixin, TimestampMixin):
     date_joined: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
     last_activity_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    user_account: Mapped[Optional["User"]] = relationship(back_populates="member", uselist=False)
+    user_account: Mapped[Optional["User"]] = relationship(back_populates="member", uselist=False) # type: ignore
     next_of_kin: Mapped[list["NextOfKin"]] = relationship(back_populates="member", cascade="all, delete-orphan")
     trusted_contacts: Mapped[list["TrustedContact"]] = relationship(
         back_populates="member", cascade="all, delete-orphan"
     )
-    savings_accounts: Mapped[list["SavingsAccount"]] = relationship(back_populates="member")
-    loan_applications: Mapped[list["LoanApplication"]] = relationship(
+    savings_accounts: Mapped[list["SavingsAccount"]] = relationship(back_populates="member") # type: ignore
+    loan_applications: Mapped[list["LoanApplication"]] = relationship( # type: ignore
         back_populates="member", foreign_keys="LoanApplication.member_id"
     )
 

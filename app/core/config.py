@@ -33,6 +33,25 @@ class Settings(BaseSettings):
 
     FCM_SERVER_KEY: str = ""
 
+        # Mobile Money (MarzPay)
+    MARZPAY_API_KEY: str = ""
+    MARZPAY_API_SECRET: str = ""
+    MARZPAY_BASE_URL: str = "https://wallet.wearemarz.com/api/v1"
+    PUBLIC_BASE_URL: str = "http://localhost:8000"
+
+        # SMS (MarzSMS - https://sms.wearemarz.com/docs)
+    MARZSMS_API_KEY: str = ""
+    MARZSMS_API_SECRET: str = ""
+    MARZSMS_BASE_URL: str = "https://sms.wearemarz.com/api/v1"
+    MARZSMS_SENDER_ID: str = ""
+
+
+
+    # Used in SMS message templates, e.g. "- Kampala SACCO"
+    SACCO_NAME: str
+
+
+
     # App
     ENVIRONMENT: str = "development"
     DORMANCY_THRESHOLD_MONTHS: int = 6

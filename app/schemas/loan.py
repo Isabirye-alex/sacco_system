@@ -108,6 +108,8 @@ class LoanApplicationRead(ORMBase):
     purpose: Optional[str] = None
     status: LoanStatus
     is_non_member_applicant: bool
+    reviewed_by_user_id: Optional[str] = None
+    approved_by_user_id: Optional[str] = None
     disbursed_at: Optional[datetime] = None
     created_at: datetime
 
@@ -126,3 +128,12 @@ class RepaymentScheduleRead(ORMBase):
     penalty_due: Decimal
     amount_paid: Decimal
     is_paid: bool
+
+
+class LoanTransactionRead(ORMBase):
+    id: str
+    txn_type: str
+    amount: Decimal
+    narrative: Optional[str] = None
+    performed_by_user_id: Optional[str] = None
+    created_at: datetime

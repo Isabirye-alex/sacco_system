@@ -3,7 +3,7 @@ Credit / Loan Management endpoints: product setup, applications, guarantor
 workflow, approval/rejection, disbursement, and repayments. Disbursement and
 repayment operations post balancing entries to the general ledger.
 """
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,7 +18,7 @@ from app.core.enums import (
     UserRole,
 )
 from app.dependencies import get_current_user, require_roles
-from app.models.loan import Collateral, Guarantor, LoanApplication, LoanProduct, LoanRepaymentSchedule, LoanTransaction
+from app.models.loan import Collateral, Guarantor, LoanApplication, LoanProduct, LoanTransaction
 from app.models.member import Member
 from app.models.savings import SavingsAccount, SavingsTransaction
 from app.models.user import User
@@ -33,10 +33,15 @@ from app.schemas.loan import (
     LoanProductCreate,
     LoanProductRead,
     LoanRepayment,
+    LoanTransactionRead,
     RepaymentScheduleRead,
+    
 )
-from app.services.loan_calculator import build_reducing_balance_schedule
+from app.services.audit_service import record_audit
+from app.services.loan_disbursement_service import activate_disbursed_loan
+from app.services.loan_repayment_service import apply_loan_repayment
 from app.services.numbering import generate_loan_number
+from app.services.transaction_alerts import notify_loan_disbursement, notify_loan_repayment
 
 router = APIRouter(prefix="/api/v1/loans", tags=["Credit & Loans"])
 
@@ -48,7 +53,7 @@ LOAN_OFFICER_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.LOAN_OFFICER)
 def create_loan_product(
     payload: LoanProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # type: ignore
 ):
     product = LoanProduct(**payload.model_dump())
     db.add(product)
@@ -177,7 +182,7 @@ def respond_to_guarantee(
     if not guarantor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guarantor record not found.")
     guarantor.status = GuarantorStatus.ACCEPTED if payload.accept else GuarantorStatus.DECLINED
-    guarantor.responded_at = datetime.utcnow()
+    guarantor.responded_at = datetime.utcnow() # type: ignore
     db.commit()
     return guarantor.loan
 
@@ -188,7 +193,7 @@ def decide_loan_application(
     loan_id: str,
     payload: LoanDecision,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)), # type: ignore
 ):
     loan = db.get(LoanApplication, loan_id)
     if not loan:
@@ -206,8 +211,16 @@ def decide_loan_application(
         loan.status = LoanStatus.APPROVED
         loan.amount_approved = payload.amount_approved or loan.amount_requested
         loan.approved_by_user_id = current_user.id
+        record_audit(
+            db, actor_user_id=current_user.id, action="loan.approve", entity_type="LoanApplication",
+            entity_id=loan.id, details=f"Approved {loan.loan_number} for {loan.amount_approved}. Notes: {payload.notes or '-'}",
+        )
     else:
         loan.status = LoanStatus.REJECTED
+        record_audit(
+            db, actor_user_id=current_user.id, action="loan.reject", entity_type="LoanApplication",
+            entity_id=loan.id, details=f"Rejected {loan.loan_number}. Notes: {payload.notes or '-'}",
+        )
     loan.reviewed_by_user_id = current_user.id
     db.commit()
     db.refresh(loan)
@@ -219,30 +232,13 @@ def disburse_loan(
     loan_id: str,
     payload: LoanDisbursement,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)), # type: ignore
 ):
     loan = db.get(LoanApplication, loan_id)
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found.")
     if loan.status != LoanStatus.APPROVED:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only approved loans can be disbursed.")
-
-    principal = loan.amount_approved
-    schedule_rows = build_reducing_balance_schedule(
-        principal=principal,
-        annual_interest_rate_pct=loan.product.interest_rate_annual,
-        months=loan.repayment_months,
-        start_date=date.today(),
-    )
-    loan.schedule = [
-        LoanRepaymentSchedule(
-            installment_number=n,
-            due_date=due,
-            principal_due=p,
-            interest_due=i,
-        )
-        for n, due, p, i in schedule_rows
-    ]
 
     if payload.disbursement_channel == DisbursementChannel.SAVINGS_ACCOUNT:
         if not payload.disbursement_savings_account_id:
@@ -253,40 +249,59 @@ def disburse_loan(
         savings_account = db.get(SavingsAccount, payload.disbursement_savings_account_id)
         if not savings_account:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Disbursement savings account not found.")
-        new_balance = savings_account.balance + principal
+        new_balance = savings_account.balance + loan.amount_approved # type: ignore
         db.add(
             SavingsTransaction(
                 account_id=savings_account.id,
                 txn_type=SavingsTxnType.DEPOSIT,
-                amount=principal,
+                amount=loan.amount_approved,
                 balance_after=new_balance,
                 narrative=f"Loan disbursement {loan.loan_number}",
                 performed_by_user_id=current_user.id,
             )
         )
         savings_account.balance = new_balance
-        savings_account.last_transaction_at = datetime.utcnow()
-
-    loan.status = LoanStatus.DISBURSED
-    loan.disbursement_channel = payload.disbursement_channel
-    loan.disbursement_savings_account_id = payload.disbursement_savings_account_id
-    loan.disbursed_at = datetime.utcnow()
-
-    db.add(
-        LoanTransaction(
-            loan_id=loan.id,
-            txn_type="disbursement",
-            amount=principal,
-            narrative=f"Disbursed via {payload.disbursement_channel.value}",
-            performed_by_user_id=current_user.id,
+        savings_account.last_transaction_at = datetime.utcnow() # type: ignore
+    elif payload.disbursement_channel == DisbursementChannel.MOBILE_MONEY:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Use POST /api/v1/mobile-money/loans/{loan_id}/disburse for mobile money disbursements - "
+                "it must go through MarzPay and confirm via webhook before the loan is activated."
+            ),
         )
+
+    activate_disbursed_loan(
+        db,
+        loan,
+        channel=payload.disbursement_channel,
+        savings_account_id=payload.disbursement_savings_account_id,
+        performed_by_user_id=current_user.id,
     )
 
-    # Loan becomes active once disbursed and the repayment clock starts
-    loan.status = LoanStatus.ACTIVE
+    notify_loan_disbursement(db, loan.member, loan.loan_number, loan.amount_approved) # type: ignore
+    record_audit(
+        db, actor_user_id=current_user.id, action="loan.disburse", entity_type="LoanApplication",
+        entity_id=loan.id, details=f"Disbursed {loan.loan_number} via {payload.disbursement_channel.value}",
+    )
+
     db.commit()
     db.refresh(loan)
     return loan
+
+
+@router.get("/applications/{loan_id}/transactions", response_model=list[LoanTransactionRead])
+def list_loan_transactions(loan_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Disbursement and repayment history for a loan, including who performed each one."""
+    loan = db.get(LoanApplication, loan_id)
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found.")
+    return (
+        db.query(LoanTransaction)
+        .filter(LoanTransaction.loan_id == loan_id)
+        .order_by(LoanTransaction.created_at.desc())
+        .all()
+    )
 
 
 @router.post("/applications/{loan_id}/repayments", response_model=LoanApplicationDetailRead)
@@ -294,7 +309,7 @@ def record_loan_repayment(
     loan_id: str,
     payload: LoanRepayment,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES, UserRole.TELLER, UserRole.ACCOUNTANT)),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES, UserRole.TELLER, UserRole.ACCOUNTANT)), # type: ignore
 ):
     loan = db.get(LoanApplication, loan_id)
     if not loan:
@@ -302,30 +317,13 @@ def record_loan_repayment(
     if loan.status not in (LoanStatus.ACTIVE,):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Loan is not active.")
 
-    remaining = payload.amount
-    for installment in loan.schedule:
-        if installment.is_paid or remaining <= 0:
-            continue
-        installment_due = installment.principal_due + installment.interest_due + installment.penalty_due
-        outstanding = installment_due - installment.amount_paid
-        applied = min(remaining, outstanding)
-        installment.amount_paid += applied
-        remaining -= applied
-        if installment.amount_paid >= installment_due:
-            installment.is_paid = True
+    apply_loan_repayment(db, loan, payload.amount, narrative=payload.reference, performed_by_user_id=current_user.id)
 
-    db.add(
-        LoanTransaction(
-            loan_id=loan.id,
-            txn_type="repayment",
-            amount=payload.amount,
-            narrative=payload.reference,
-            performed_by_user_id=current_user.id,
-        )
+    notify_loan_repayment(db, loan.member, loan.loan_number, payload.amount) # type: ignore
+    record_audit(
+        db, actor_user_id=current_user.id, action="loan.repayment", entity_type="LoanApplication",
+        entity_id=loan.id, details=f"Repayment of {payload.amount} on {loan.loan_number}",
     )
-
-    if all(i.is_paid for i in loan.schedule):
-        loan.status = LoanStatus.CLOSED
 
     db.commit()
     db.refresh(loan)

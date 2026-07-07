@@ -40,7 +40,7 @@ class SavingsAccount(Base, UUIDPKMixin, TimestampMixin):
     opened_date: Mapped[date] = mapped_column(default=date.today)
     last_transaction_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    member: Mapped["Member"] = relationship(back_populates="savings_accounts")
+    member: Mapped["Member"] = relationship(back_populates="savings_accounts") # type: ignore
     product: Mapped["SavingsProduct"] = relationship(back_populates="accounts")
     transactions: Mapped[list["SavingsTransaction"]] = relationship(
         back_populates="account", cascade="all, delete-orphan", order_by="SavingsTransaction.created_at"
@@ -57,6 +57,6 @@ class SavingsTransaction(Base, UUIDPKMixin):
     narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     performed_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
 
     account: Mapped["SavingsAccount"] = relationship(back_populates="transactions")

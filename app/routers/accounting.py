@@ -19,7 +19,8 @@ from app.schemas.misc import (
     JournalEntryRead,
     TrialBalanceLine,
 )
-from app.services.accounting_service import post_journal_entry
+from app.services.accounting_service import post_journal_entry # type: ignore
+from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/api/v1/accounting", tags=["Accounting"])
 
@@ -30,12 +31,17 @@ ACCOUNTANT_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT)
 def create_account(
     payload: ChartOfAccountCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)),
+    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)), # type: ignore
 ):
     if db.query(ChartOfAccount).filter(ChartOfAccount.code == payload.code).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Account code already exists.")
     account = ChartOfAccount(**payload.model_dump())
     db.add(account)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="accounting.account_create", entity_type="ChartOfAccount",
+        entity_id=account.id, details=f"Created account {account.code} - {account.name} ({account.account_type})",
+    )
     db.commit()
     db.refresh(account)
     return account
@@ -50,7 +56,7 @@ def list_accounts(db: Session = Depends(get_db), current_user: User = Depends(ge
 def create_journal_entry(
     payload: JournalEntryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)),
+    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)), # type: ignore
 ):
     entry = post_journal_entry(
         db=db,
@@ -59,13 +65,19 @@ def create_journal_entry(
         source_module="manual",
         created_by_user_id=current_user.id,
     )
+    db.flush()
+    total = sum((line.debit for line in entry.lines), Decimal("0"))
+    record_audit(
+        db, actor_user_id=current_user.id, action="accounting.journal_entry_post", entity_type="JournalEntry",
+        entity_id=entry.id, details=f"Posted {entry.entry_number}: {payload.narrative or 'no narrative'} (UGX {total})",
+    )
     db.commit()
     db.refresh(entry)
     return entry
 
 
 @router.get("/trial-balance", response_model=list[TrialBalanceLine])
-def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES))):
+def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES))): # type: ignore
     accounts = db.query(ChartOfAccount).all()
     result = []
     for account in accounts:
@@ -73,7 +85,7 @@ def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(re
         credit_total = sum((l.credit for l in account.lines), Decimal("0"))
         if debit_total == 0 and credit_total == 0:
             continue
-        result.append(
+        result.append( # type: ignore
             TrialBalanceLine(
                 account_code=account.code,
                 account_name=account.name,
@@ -81,4 +93,4 @@ def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(re
                 credit=credit_total,
             )
         )
-    return result
+    return result # type: ignore

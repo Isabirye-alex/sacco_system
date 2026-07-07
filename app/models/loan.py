@@ -55,7 +55,7 @@ class LoanApplication(Base, UUIDPKMixin, TimestampMixin):
         ForeignKey("savings_accounts.id"), nullable=True
     )
 
-    member: Mapped["Member"] = relationship(back_populates="loan_applications", foreign_keys=[member_id])
+    member: Mapped["Member"] = relationship(back_populates="loan_applications", foreign_keys=[member_id]) # type: ignore
     product: Mapped["LoanProduct"] = relationship(back_populates="applications")
     guarantors: Mapped[list["Guarantor"]] = relationship(back_populates="loan", cascade="all, delete-orphan")
     schedule: Mapped[list["LoanRepaymentSchedule"]] = relationship(
@@ -100,7 +100,7 @@ class LoanTransaction(Base, UUIDPKMixin):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     performed_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
 
     loan: Mapped["LoanApplication"] = relationship(back_populates="transactions")
 

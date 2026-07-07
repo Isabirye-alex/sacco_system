@@ -17,6 +17,8 @@ from app.models.payroll import Employer, PayrollDeduction, PayrollFile
 from app.models.savings import SavingsAccount, SavingsTransaction
 from app.models.user import User
 from app.schemas.misc import EmployerCreate, EmployerRead, PayrollFileCreate, PayrollFileRead
+from app.services.audit_service import record_audit
+from app.services.transaction_alerts import notify_deposit, notify_loan_repayment
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["HR & Payroll"])
 
@@ -25,10 +27,15 @@ HR_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.HR_OFFICER, UserRole.ACCO
 
 @router.post("/employers", response_model=EmployerRead, status_code=status.HTTP_201_CREATED)
 def create_employer(
-    payload: EmployerCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES))
+    payload: EmployerCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES)) # type: ignore
 ):
     employer = Employer(**payload.model_dump())
     db.add(employer)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="payroll.employer_create", entity_type="Employer",
+        entity_id=employer.id, details=f"Created employer {employer.name}",
+    )
     db.commit()
     db.refresh(employer)
     return employer
@@ -43,7 +50,7 @@ def list_employers(db: Session = Depends(get_db), current_user: User = Depends(g
 def upload_payroll_file(
     payload: PayrollFileCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*HR_ROLES)),
+    current_user: User = Depends(require_roles(*HR_ROLES)), # type: ignore
 ):
     """
     Ingests a batch of payroll deduction lines for a period and immediately
@@ -65,6 +72,8 @@ def upload_payroll_file(
     db.add(payroll_file)
     db.flush()
 
+    reconciled_count = 0
+    exception_count = 0
     for line in payload.deductions:
         deduction = PayrollDeduction(
             payroll_file_id=payroll_file.id,
@@ -75,11 +84,21 @@ def upload_payroll_file(
         )
         try:
             _reconcile_deduction(db, deduction, current_user)
+            reconciled_count += 1
         except ValueError as exc:
             deduction.status = DeductionStatus.EXCEPTION
             deduction.exception_reason = str(exc)
+            exception_count += 1
         db.add(deduction)
 
+    record_audit(
+        db, actor_user_id=current_user.id, action="payroll.file_upload", entity_type="PayrollFile",
+        entity_id=payroll_file.id,
+        details=(
+            f"Uploaded {payroll_file.period} for {employer.name}: {len(payload.deductions)} line(s), "
+            f"{reconciled_count} reconciled, {exception_count} exception(s)"
+        ),
+    )
     db.commit()
     db.refresh(payroll_file)
     return payroll_file
@@ -108,6 +127,8 @@ def _reconcile_deduction(db: Session, deduction: PayrollDeduction, current_user:
                 performed_by_user_id=current_user.id,
             )
         )
+        if loan.member: # type: ignore
+            notify_loan_repayment(db, loan.member, loan.loan_number, deduction.amount) # type: ignore
     elif deduction.savings_account_id:
         account = db.get(SavingsAccount, deduction.savings_account_id)
         if not account:
@@ -124,16 +145,18 @@ def _reconcile_deduction(db: Session, deduction: PayrollDeduction, current_user:
             )
         )
         account.balance = new_balance
-        account.last_transaction_at = datetime.utcnow()
+        account.last_transaction_at = datetime.utcnow() # type: ignore
+        if account.member: # type: ignore
+            notify_deposit(db, account.member, account.account_number, deduction.amount, new_balance) # type: ignore
     else:
         raise ValueError("Deduction line has no loan_id or savings_account_id target.")
 
     deduction.status = DeductionStatus.RECONCILED
-    deduction.reconciled_at = datetime.utcnow()
+    deduction.reconciled_at = datetime.utcnow() # type: ignore
 
 
 @router.get("/files/{payroll_file_id}", response_model=PayrollFileRead)
-def get_payroll_file(payroll_file_id: str, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES))):
+def get_payroll_file(payroll_file_id: str, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES))): # type: ignore
     payroll_file = db.get(PayrollFile, payroll_file_id)
     if not payroll_file:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll file not found.")

@@ -47,7 +47,7 @@ class ShareTransaction(Base, UUIDPKMixin):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     counterparty_member_id: Mapped[Optional[str]] = mapped_column(ForeignKey("members.id"), nullable=True)
     board_approved: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
 
     holding: Mapped["ShareHolding"] = relationship(back_populates="transactions")
 

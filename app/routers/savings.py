@@ -24,6 +24,8 @@ from app.schemas.savings import (
     SavingsTransactionRead,
 )
 from app.services.numbering import generate_savings_account_number
+from app.services.transaction_alerts import notify_deposit, notify_withdrawal
+from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/api/v1/savings", tags=["Savings"])
 
@@ -35,7 +37,7 @@ TELLER_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.TELLER, UserRole.ACCO
 def create_savings_product(
     payload: SavingsProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # pyright: ignore[reportArgumentType]
 ):
     product = SavingsProduct(**payload.model_dump())
     db.add(product)
@@ -54,7 +56,7 @@ def list_savings_products(db: Session = Depends(get_db), current_user: User = De
 def open_savings_account(
     payload: SavingsAccountCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*TELLER_ROLES)),
+    current_user: User = Depends(require_roles(*TELLER_ROLES)), # type: ignore
 ):
     member = db.get(Member, payload.member_id)
     if not member:
@@ -102,7 +104,7 @@ def post_savings_transaction(
     account_id: str,
     payload: SavingsTransactionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*TELLER_ROLES)),
+    current_user: User = Depends(require_roles(*TELLER_ROLES)), # type: ignore
 ):
     account = db.get(SavingsAccount, account_id)
     if not account or not account.is_active:
@@ -131,10 +133,21 @@ def post_savings_transaction(
         performed_by_user_id=current_user.id,
     )
     account.balance = new_balance
-    account.last_transaction_at = datetime.utcnow()
-    account.member.last_activity_at = datetime.utcnow()
-
+    account.last_transaction_at = datetime.utcnow() # type: ignore
+    account.member.last_activity_at = datetime.utcnow() # type: ignore
     db.add(txn)
+
+    if payload.txn_type == SavingsTxnType.DEPOSIT:
+        notify_deposit(db, account.member, account.account_number, payload.amount, new_balance) # type: ignore
+    elif payload.txn_type == SavingsTxnType.WITHDRAWAL:
+        notify_withdrawal(db, account.member, account.account_number, payload.amount, new_balance) # type: ignore
+
+    record_audit(
+        db, actor_user_id=current_user.id, action=f"savings.{payload.txn_type.value}",
+        entity_type="SavingsAccount", entity_id=account.id,
+        details=f"{payload.txn_type.value} of {payload.amount} on {account.account_number}",
+    )
+
     db.commit()
     db.refresh(txn)
     return txn

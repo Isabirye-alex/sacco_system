@@ -40,13 +40,19 @@ def queue_notification(
 
 def dispatch(notification: Notification) -> None:
     """
-    Stub dispatcher. Replace the branches below with real SMTP / Africa's
-    Talking / FCM calls. Any exception should be caught and stored on
-    notification.error_message with status=FAILED by the caller.
+    Sends the notification through its channel. Raises on failure so the
+    caller can mark the notification FAILED with the error message -
+    callers must never let an SMS failure block or roll back the
+    financial transaction that triggered it.
     """
-    if notification.channel == NotificationChannel.EMAIL:
+    if notification.channel == NotificationChannel.SMS:
+        phone = notification.member.phone_number if notification.member else None
+        if not phone:
+            raise ValueError("No phone number on file for this notification's recipient.")
+        from app.integrations.marzsms import send_sms  # local import: keeps this optional at startup
+
+        send_sms(recipient=phone, message=notification.body)
+    elif notification.channel == NotificationChannel.EMAIL:
         logger.info("Sending EMAIL to member=%s subject=%s", notification.member_id, notification.subject)
-    elif notification.channel == NotificationChannel.SMS:
-        logger.info("Sending SMS to member=%s", notification.member_id)
     elif notification.channel == NotificationChannel.PUSH:
         logger.info("Sending PUSH to user=%s", notification.user_id)
