@@ -40,10 +40,10 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str = "http://localhost:8000"
 
         # SMS (MarzSMS - https://sms.wearemarz.com/docs)
-    MARZSMS_API_KEY: str = ""
-    MARZSMS_API_SECRET: str = ""
+    MARZSMS_API_KEY: str 
+    MARZSMS_API_SECRET: str 
     MARZSMS_BASE_URL: str = "https://sms.wearemarz.com/api/v1"
-    MARZSMS_SENDER_ID: str = ""
+    MARZSMS_SENDER_ID: str 
 
 
 
