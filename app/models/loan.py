@@ -27,7 +27,13 @@ class LoanProduct(Base, UUIDPKMixin, TimestampMixin):
     min_guarantors: Mapped[int] = mapped_column(default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # The asset account this product's outstanding principal posts against
+    # (loans receivable). Same nullable/soft-skip behavior as
+    # SavingsProduct.gl_liability_account_id - see gl_posting_service.py.
+    gl_asset_account_id: Mapped[Optional[str]] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+
     applications: Mapped[list["LoanApplication"]] = relationship(back_populates="product")
+    gl_asset_account: Mapped[Optional["ChartOfAccount"]] = relationship()
 
 
 class LoanApplication(Base, UUIDPKMixin, TimestampMixin):
@@ -55,7 +61,7 @@ class LoanApplication(Base, UUIDPKMixin, TimestampMixin):
         ForeignKey("savings_accounts.id"), nullable=True
     )
 
-    member: Mapped["Member"] = relationship(back_populates="loan_applications", foreign_keys=[member_id]) # type: ignore
+    member: Mapped["Member"] = relationship(back_populates="loan_applications", foreign_keys=[member_id])
     product: Mapped["LoanProduct"] = relationship(back_populates="applications")
     guarantors: Mapped[list["Guarantor"]] = relationship(back_populates="loan", cascade="all, delete-orphan")
     schedule: Mapped[list["LoanRepaymentSchedule"]] = relationship(
@@ -100,7 +106,7 @@ class LoanTransaction(Base, UUIDPKMixin):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     performed_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     loan: Mapped["LoanApplication"] = relationship(back_populates="transactions")
 

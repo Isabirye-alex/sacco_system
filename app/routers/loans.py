@@ -32,12 +32,13 @@ from app.schemas.loan import (
     LoanDisbursement,
     LoanProductCreate,
     LoanProductRead,
+    LoanProductUpdate,
     LoanRepayment,
     LoanTransactionRead,
     RepaymentScheduleRead,
-    
 )
 from app.services.audit_service import record_audit
+from app.services.gl_posting_service import post_loan_disbursement_gl, post_loan_repayment_gl
 from app.services.loan_disbursement_service import activate_disbursed_loan
 from app.services.loan_repayment_service import apply_loan_repayment
 from app.services.numbering import generate_loan_number
@@ -53,10 +54,15 @@ LOAN_OFFICER_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.LOAN_OFFICER)
 def create_loan_product(
     payload: LoanProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # type: ignore
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
 ):
     product = LoanProduct(**payload.model_dump())
     db.add(product)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="loans.product_create", entity_type="LoanProduct",
+        entity_id=product.id, details=f"Created product {product.name}",
+    )
     db.commit()
     db.refresh(product)
     return product
@@ -65,6 +71,28 @@ def create_loan_product(
 @router.get("/products", response_model=list[LoanProductRead])
 def list_loan_products(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(LoanProduct).filter(LoanProduct.is_active.is_(True)).all()
+
+
+@router.patch("/products/{product_id}", response_model=LoanProductRead)
+def update_loan_product(
+    product_id: str,
+    payload: LoanProductUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
+):
+    """Mainly used to link/relink a product's GL asset account - see app/services/gl_posting_service.py."""
+    product = db.get(LoanProduct, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan product not found.")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(product, field, value)
+    record_audit(
+        db, actor_user_id=current_user.id, action="loans.product_update", entity_type="LoanProduct",
+        entity_id=product.id, details=f"Updated {product.name}: {payload.model_dump(exclude_unset=True)}",
+    )
+    db.commit()
+    db.refresh(product)
+    return product
 
 
 # ---------- Loan Applications ----------
@@ -182,7 +210,7 @@ def respond_to_guarantee(
     if not guarantor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guarantor record not found.")
     guarantor.status = GuarantorStatus.ACCEPTED if payload.accept else GuarantorStatus.DECLINED
-    guarantor.responded_at = datetime.utcnow() # type: ignore
+    guarantor.responded_at = datetime.utcnow()
     db.commit()
     return guarantor.loan
 
@@ -193,7 +221,7 @@ def decide_loan_application(
     loan_id: str,
     payload: LoanDecision,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
 ):
     loan = db.get(LoanApplication, loan_id)
     if not loan:
@@ -232,7 +260,7 @@ def disburse_loan(
     loan_id: str,
     payload: LoanDisbursement,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
 ):
     loan = db.get(LoanApplication, loan_id)
     if not loan:
@@ -240,6 +268,7 @@ def disburse_loan(
     if loan.status != LoanStatus.APPROVED:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only approved loans can be disbursed.")
 
+    savings_account = None
     if payload.disbursement_channel == DisbursementChannel.SAVINGS_ACCOUNT:
         if not payload.disbursement_savings_account_id:
             raise HTTPException(
@@ -249,7 +278,7 @@ def disburse_loan(
         savings_account = db.get(SavingsAccount, payload.disbursement_savings_account_id)
         if not savings_account:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Disbursement savings account not found.")
-        new_balance = savings_account.balance + loan.amount_approved # type: ignore
+        new_balance = savings_account.balance + loan.amount_approved
         db.add(
             SavingsTransaction(
                 account_id=savings_account.id,
@@ -261,7 +290,7 @@ def disburse_loan(
             )
         )
         savings_account.balance = new_balance
-        savings_account.last_transaction_at = datetime.utcnow() # type: ignore
+        savings_account.last_transaction_at = datetime.utcnow()
     elif payload.disbursement_channel == DisbursementChannel.MOBILE_MONEY:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -279,7 +308,11 @@ def disburse_loan(
         performed_by_user_id=current_user.id,
     )
 
-    notify_loan_disbursement(db, loan.member, loan.loan_number, loan.amount_approved) # type: ignore
+    post_loan_disbursement_gl(
+        db, loan, channel=payload.disbursement_channel,
+        disbursement_savings_account=savings_account, performed_by_user_id=current_user.id,
+    )
+    notify_loan_disbursement(db, loan.member, loan.loan_number, loan.amount_approved)
     record_audit(
         db, actor_user_id=current_user.id, action="loan.disburse", entity_type="LoanApplication",
         entity_id=loan.id, details=f"Disbursed {loan.loan_number} via {payload.disbursement_channel.value}",
@@ -309,7 +342,7 @@ def record_loan_repayment(
     loan_id: str,
     payload: LoanRepayment,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES, UserRole.TELLER, UserRole.ACCOUNTANT)), # type: ignore
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES, UserRole.TELLER, UserRole.ACCOUNTANT)),
 ):
     loan = db.get(LoanApplication, loan_id)
     if not loan:
@@ -317,9 +350,16 @@ def record_loan_repayment(
     if loan.status not in (LoanStatus.ACTIVE,):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Loan is not active.")
 
-    apply_loan_repayment(db, loan, payload.amount, narrative=payload.reference, performed_by_user_id=current_user.id)
+    breakdown = apply_loan_repayment(
+        db, loan, payload.amount, narrative=payload.reference, performed_by_user_id=current_user.id
+    )
+    post_loan_repayment_gl(
+        db, loan,
+        principal_paid=breakdown.principal_paid, interest_paid=breakdown.interest_paid,
+        penalty_paid=breakdown.penalty_paid, channel=payload.channel, performed_by_user_id=current_user.id,
+    )
 
-    notify_loan_repayment(db, loan.member, loan.loan_number, payload.amount) # type: ignore
+    notify_loan_repayment(db, loan.member, loan.loan_number, payload.amount)
     record_audit(
         db, actor_user_id=current_user.id, action="loan.repayment", entity_type="LoanApplication",
         entity_id=loan.id, details=f"Repayment of {payload.amount} on {loan.loan_number}",

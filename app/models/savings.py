@@ -25,7 +25,17 @@ class SavingsProduct(Base, UUIDPKMixin, TimestampMixin):
     withdrawal_penalty_pct: Mapped[Decimal] = mapped_column(Numeric(6, 3), default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # The liability account this product's balances post against (what the
+    # SACCO owes savers). Nullable so existing products keep working before
+    # someone assigns one - see app/services/gl_posting_service.py, which
+    # skips (and logs a warning) rather than failing a deposit when this is
+    # unset, but you won't get a balanced ledger until it's configured.
+    gl_liability_account_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("chart_of_accounts.id"), nullable=True
+    )
+
     accounts: Mapped[list["SavingsAccount"]] = relationship(back_populates="product")
+    gl_liability_account: Mapped[Optional["ChartOfAccount"]] = relationship()
 
 
 class SavingsAccount(Base, UUIDPKMixin, TimestampMixin):
@@ -40,7 +50,7 @@ class SavingsAccount(Base, UUIDPKMixin, TimestampMixin):
     opened_date: Mapped[date] = mapped_column(default=date.today)
     last_transaction_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    member: Mapped["Member"] = relationship(back_populates="savings_accounts") # type: ignore
+    member: Mapped["Member"] = relationship(back_populates="savings_accounts")
     product: Mapped["SavingsProduct"] = relationship(back_populates="accounts")
     transactions: Mapped[list["SavingsTransaction"]] = relationship(
         back_populates="account", cascade="all, delete-orphan", order_by="SavingsTransaction.created_at"
@@ -57,6 +67,6 @@ class SavingsTransaction(Base, UUIDPKMixin):
     narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     performed_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     account: Mapped["SavingsAccount"] = relationship(back_populates="transactions")

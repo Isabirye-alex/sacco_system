@@ -43,6 +43,7 @@ from app.schemas.mobile_money import (
     MobileMoneyWithdrawalRequest,
 )
 from app.services.audit_service import record_audit
+from app.services.gl_posting_service import post_loan_disbursement_gl, post_loan_repayment_gl, post_savings_transaction_gl
 from app.services.loan_disbursement_service import activate_disbursed_loan
 from app.services.loan_repayment_service import apply_loan_repayment
 from app.services.transaction_alerts import notify_deposit, notify_loan_disbursement, notify_loan_repayment, notify_withdrawal
@@ -148,7 +149,7 @@ def initiate_savings_withdrawal(
     db.flush()
 
     try:
-        response = marzpay.send_money( # type: ignore
+        response = marzpay.send_money(
             amount=txn.amount,
             phone_number=phone,
             reference=txn.id,
@@ -161,10 +162,10 @@ def initiate_savings_withdrawal(
         db.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"MarzPay error: {exc}") from exc
 
-    tx_data = response.get("data", {}).get("transaction", {}) # type: ignore
-    withdrawal_data = response.get("data", {}).get("withdrawal", {}) or response.get("data", {}).get("disbursement", {}) # type: ignore
-    txn.marzpay_transaction_uuid = tx_data.get("uuid") # type: ignore
-    txn.provider = withdrawal_data.get("provider") # type: ignore
+    tx_data = response.get("data", {}).get("transaction", {})
+    withdrawal_data = response.get("data", {}).get("withdrawal", {}) or response.get("data", {}).get("disbursement", {})
+    txn.marzpay_transaction_uuid = tx_data.get("uuid")
+    txn.provider = withdrawal_data.get("provider")
     txn.status = MobileMoneyStatus.PROCESSING
 
     record_audit(
@@ -216,7 +217,7 @@ def initiate_loan_repayment(
 
 def _dispatch_collection(txn: MobileMoneyTransaction, description: str) -> None:
     try:
-        response = marzpay.collect_money( # type: ignore
+        response = marzpay.collect_money(
             amount=txn.amount,
             phone_number=txn.phone_number,
             reference=txn.id,
@@ -228,10 +229,10 @@ def _dispatch_collection(txn: MobileMoneyTransaction, description: str) -> None:
         txn.failure_reason = str(exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"MarzPay error: {exc}") from exc
 
-    tx_data = response.get("data", {}).get("transaction", {}) # type: ignore
-    collection_data = response.get("data", {}).get("collection", {}) # type: ignore
-    txn.marzpay_transaction_uuid = tx_data.get("uuid") # type: ignore
-    txn.provider = collection_data.get("provider") # type: ignore
+    tx_data = response.get("data", {}).get("transaction", {})
+    collection_data = response.get("data", {}).get("collection", {})
+    txn.marzpay_transaction_uuid = tx_data.get("uuid")
+    txn.provider = collection_data.get("provider")
     txn.status = MobileMoneyStatus.PROCESSING
 
 
@@ -247,7 +248,7 @@ def initiate_loan_disbursement(
     loan_id: str,
     payload: MobileMoneyLoanDisbursementRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
 ):
     loan = db.get(LoanApplication, loan_id)
     if not loan:
@@ -255,13 +256,13 @@ def initiate_loan_disbursement(
     if loan.status != LoanStatus.APPROVED:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only approved loans can be disbursed.")
 
-    member = loan.member # type: ignore
-    phone = payload.phone_number or member.phone_number # type: ignore
+    member = loan.member
+    phone = payload.phone_number or member.phone_number
 
     txn = MobileMoneyTransaction(
         direction=MobileMoneyDirection.DISBURSEMENT,
         purpose=MobileMoneyPurpose.LOAN_DISBURSEMENT,
-        member_id=member.id, # type: ignore
+        member_id=member.id,
         loan_id=loan.id,
         amount=loan.amount_approved,
         phone_number=phone,
@@ -271,9 +272,9 @@ def initiate_loan_disbursement(
     db.flush()
 
     try:
-        response = marzpay.send_money( # type: ignore
+        response = marzpay.send_money(
             amount=txn.amount,
-            phone_number=phone, # type: ignore
+            phone_number=phone,
             reference=txn.id,
             description=f"Loan disbursement {loan.loan_number}",
             callback_url=_callback_url(),
@@ -284,10 +285,10 @@ def initiate_loan_disbursement(
         db.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"MarzPay error: {exc}") from exc
 
-    tx_data = response.get("data", {}).get("transaction", {}) # type: ignore
-    withdrawal_data = response.get("data", {}).get("withdrawal", {}) or response.get("data", {}).get("disbursement", {}) # type: ignore
-    txn.marzpay_transaction_uuid = tx_data.get("uuid") # type: ignore
-    txn.provider = withdrawal_data.get("provider") # type: ignore
+    tx_data = response.get("data", {}).get("transaction", {})
+    withdrawal_data = response.get("data", {}).get("withdrawal", {}) or response.get("data", {}).get("disbursement", {})
+    txn.marzpay_transaction_uuid = tx_data.get("uuid")
+    txn.provider = withdrawal_data.get("provider")
     txn.status = MobileMoneyStatus.PROCESSING
 
     # Loan stays APPROVED (not ACTIVE) until the webhook confirms the money
@@ -341,17 +342,17 @@ async def marzpay_webhook(request: Request, db: Session = Depends(get_db)):
         logger.warning("MarzPay webhook: could not parse request body as JSON.")
         return {"status": "ignored", "reason": "invalid_json"}
 
-    transaction_info = body.get("transaction") or {} # type: ignore
-    reference = transaction_info.get("reference") # type: ignore
-    marzpay_uuid = transaction_info.get("uuid") # type: ignore
+    transaction_info = body.get("transaction") or {}
+    reference = transaction_info.get("reference")
+    marzpay_uuid = transaction_info.get("uuid")
 
     if not reference:
         logger.warning("MarzPay webhook: missing transaction.reference in payload.")
         return {"status": "ignored", "reason": "missing_reference"}
 
-    txn = db.get(MobileMoneyTransaction, reference) # type: ignore
+    txn = db.get(MobileMoneyTransaction, reference)
     if not txn:
-        logger.warning("MarzPay webhook: no local transaction found for reference %s", reference) # type: ignore
+        logger.warning("MarzPay webhook: no local transaction found for reference %s", reference)
         return {"status": "ignored", "reason": "unknown_reference"}
 
     # Idempotency: webhooks can be delivered more than once.
@@ -363,9 +364,9 @@ async def marzpay_webhook(request: Request, db: Session = Depends(get_db)):
     # Re-verify with MarzPay directly rather than trusting the callback body.
     try:
         if txn.direction == MobileMoneyDirection.COLLECTION:
-            verified = marzpay.get_collection(marzpay_uuid or txn.marzpay_transaction_uuid) # type: ignore
+            verified = marzpay.get_collection(marzpay_uuid or txn.marzpay_transaction_uuid)
         else:
-            verified = marzpay.get_disbursement(marzpay_uuid or txn.marzpay_transaction_uuid) # type: ignore
+            verified = marzpay.get_disbursement(marzpay_uuid or txn.marzpay_transaction_uuid)
     except MarzPayError as exc:
         logger.error("MarzPay webhook: verification lookup failed for %s: %s", txn.id, exc)
         db.commit()
@@ -373,11 +374,11 @@ async def marzpay_webhook(request: Request, db: Session = Depends(get_db)):
         # staff can reconcile manually via the status endpoint.
         return {"status": "error", "reason": "verification_failed"}
 
-    verified_tx = verified.get("data", {}).get("transaction", {}) # type: ignore
-    verified_status = verified_tx.get("status") # type: ignore
-    provider_id = ( # type: ignore
-        verified.get("data", {}).get("collection", {}).get("provider_transaction_id") # type: ignore
-        or verified.get("data", {}).get("disbursement", {}).get("provider_transaction_id") # type: ignore
+    verified_tx = verified.get("data", {}).get("transaction", {})
+    verified_status = verified_tx.get("status")
+    provider_id = (
+        verified.get("data", {}).get("collection", {}).get("provider_transaction_id")
+        or verified.get("data", {}).get("disbursement", {}).get("provider_transaction_id")
     )
     txn.provider_transaction_id = provider_id
 
@@ -397,27 +398,28 @@ async def marzpay_webhook(request: Request, db: Session = Depends(get_db)):
 
 def _finalize_success(db: Session, txn: MobileMoneyTransaction) -> None:
     txn.status = MobileMoneyStatus.COMPLETED
-    txn.confirmed_at = datetime.utcnow() # type: ignore
+    txn.confirmed_at = datetime.utcnow()
     member = db.get(Member, txn.member_id)
 
     if txn.purpose == MobileMoneyPurpose.SAVINGS_DEPOSIT:
         account = db.get(SavingsAccount, txn.savings_account_id)
         if account:
             new_balance = account.balance + txn.amount
-            db.add(
-                SavingsTransaction(
-                    account_id=account.id,
-                    txn_type=SavingsTxnType.DEPOSIT,
-                    amount=txn.amount,
-                    balance_after=new_balance,
-                    narrative="Mobile money deposit",
-                    reference=txn.provider_transaction_id,
-                )
+            savings_txn = SavingsTransaction(
+                account_id=account.id,
+                txn_type=SavingsTxnType.DEPOSIT,
+                amount=txn.amount,
+                balance_after=new_balance,
+                narrative="Mobile money deposit",
+                reference=txn.provider_transaction_id,
             )
+            db.add(savings_txn)
+            db.flush()
             account.balance = new_balance
-            account.last_transaction_at = datetime.utcnow() # type: ignore
-            if account.member: # type: ignore
-                account.member.last_activity_at = datetime.utcnow() # type: ignore
+            account.last_transaction_at = datetime.utcnow()
+            if account.member:
+                account.member.last_activity_at = datetime.utcnow()
+            post_savings_transaction_gl(db, account, savings_txn, channel="mobile_money")
             if member:
                 notify_deposit(db, member, account.account_number, txn.amount, new_balance)
 
@@ -425,27 +427,32 @@ def _finalize_success(db: Session, txn: MobileMoneyTransaction) -> None:
         account = db.get(SavingsAccount, txn.savings_account_id)
         if account:
             new_balance = account.balance - txn.amount
-            db.add(
-                SavingsTransaction(
-                    account_id=account.id,
-                    txn_type=SavingsTxnType.WITHDRAWAL,
-                    amount=txn.amount,
-                    balance_after=new_balance,
-                    narrative="Mobile money withdrawal",
-                    reference=txn.provider_transaction_id,
-                )
+            savings_txn = SavingsTransaction(
+                account_id=account.id,
+                txn_type=SavingsTxnType.WITHDRAWAL,
+                amount=txn.amount,
+                balance_after=new_balance,
+                narrative="Mobile money withdrawal",
+                reference=txn.provider_transaction_id,
             )
+            db.add(savings_txn)
+            db.flush()
             account.balance = new_balance
-            account.last_transaction_at = datetime.utcnow() # type: ignore
-            if account.member: # type: ignore
-                account.member.last_activity_at = datetime.utcnow() # type: ignore
+            account.last_transaction_at = datetime.utcnow()
+            if account.member:
+                account.member.last_activity_at = datetime.utcnow()
+            post_savings_transaction_gl(db, account, savings_txn, channel="mobile_money")
             if member:
                 notify_withdrawal(db, member, account.account_number, txn.amount, new_balance)
 
     elif txn.purpose == MobileMoneyPurpose.LOAN_REPAYMENT:
         loan = db.get(LoanApplication, txn.loan_id)
         if loan and loan.status == LoanStatus.ACTIVE:
-            apply_loan_repayment(db, loan, txn.amount, narrative="Mobile money repayment")
+            breakdown = apply_loan_repayment(db, loan, txn.amount, narrative="Mobile money repayment")
+            post_loan_repayment_gl(
+                db, loan, principal_paid=breakdown.principal_paid, interest_paid=breakdown.interest_paid,
+                penalty_paid=breakdown.penalty_paid, channel="mobile_money",
+            )
             if member:
                 notify_loan_repayment(db, member, loan.loan_number, txn.amount)
 
@@ -458,6 +465,7 @@ def _finalize_success(db: Session, txn: MobileMoneyTransaction) -> None:
                 channel=DisbursementChannel.MOBILE_MONEY,
                 narrative=f"Mobile money disbursement (MarzPay ref {txn.provider_transaction_id})",
             )
+            post_loan_disbursement_gl(db, loan, channel=DisbursementChannel.MOBILE_MONEY)
             if member:
                 notify_loan_disbursement(db, member, loan.loan_number, txn.amount)
 

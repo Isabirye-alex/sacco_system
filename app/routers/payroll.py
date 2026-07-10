@@ -12,12 +12,14 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.enums import DeductionStatus, SavingsTxnType, UserRole
 from app.dependencies import get_current_user, require_roles
-from app.models.loan import LoanApplication, LoanTransaction
+from app.models.loan import LoanApplication
 from app.models.payroll import Employer, PayrollDeduction, PayrollFile
 from app.models.savings import SavingsAccount, SavingsTransaction
 from app.models.user import User
 from app.schemas.misc import EmployerCreate, EmployerRead, PayrollFileCreate, PayrollFileRead
 from app.services.audit_service import record_audit
+from app.services.gl_posting_service import post_loan_repayment_gl, post_savings_transaction_gl
+from app.services.loan_repayment_service import apply_loan_repayment
 from app.services.transaction_alerts import notify_deposit, notify_loan_repayment
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["HR & Payroll"])
@@ -27,7 +29,7 @@ HR_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.HR_OFFICER, UserRole.ACCO
 
 @router.post("/employers", response_model=EmployerRead, status_code=status.HTTP_201_CREATED)
 def create_employer(
-    payload: EmployerCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES)) # type: ignore
+    payload: EmployerCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES))
 ):
     employer = Employer(**payload.model_dump())
     db.add(employer)
@@ -50,7 +52,7 @@ def list_employers(db: Session = Depends(get_db), current_user: User = Depends(g
 def upload_payroll_file(
     payload: PayrollFileCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*HR_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*HR_ROLES)),
 ):
     """
     Ingests a batch of payroll deduction lines for a period and immediately
@@ -105,58 +107,51 @@ def upload_payroll_file(
 
 
 def _reconcile_deduction(db: Session, deduction: PayrollDeduction, current_user: User) -> None:
+    # Payroll remittances are treated as "cash" for GL settlement purposes -
+    # the SACCO is trusting the employer to remit what they deducted, which
+    # is a simplification (a stricter model would post to a separate
+    # "payroll remittances receivable" account until the employer actually
+    # pays over). See app/services/gl_posting_service.py module docstring.
     if deduction.loan_id:
         loan = db.get(LoanApplication, deduction.loan_id)
         if not loan:
             raise ValueError("Referenced loan not found.")
-        for installment in loan.schedule:
-            if installment.is_paid or deduction.amount <= 0:
-                continue
-            due = installment.principal_due + installment.interest_due + installment.penalty_due
-            outstanding = due - installment.amount_paid
-            applied = min(deduction.amount, outstanding)
-            installment.amount_paid += applied
-            if installment.amount_paid >= due:
-                installment.is_paid = True
-        db.add(
-            LoanTransaction(
-                loan_id=loan.id,
-                txn_type="repayment",
-                amount=deduction.amount,
-                narrative="Payroll deduction",
-                performed_by_user_id=current_user.id,
-            )
+        breakdown = apply_loan_repayment(db, loan, deduction.amount, narrative="Payroll deduction")
+        post_loan_repayment_gl(
+            db, loan, principal_paid=breakdown.principal_paid, interest_paid=breakdown.interest_paid,
+            penalty_paid=breakdown.penalty_paid, channel="cash",
         )
-        if loan.member: # type: ignore
-            notify_loan_repayment(db, loan.member, loan.loan_number, deduction.amount) # type: ignore
+        if loan.member:
+            notify_loan_repayment(db, loan.member, loan.loan_number, deduction.amount)
     elif deduction.savings_account_id:
         account = db.get(SavingsAccount, deduction.savings_account_id)
         if not account:
             raise ValueError("Referenced savings account not found.")
         new_balance = account.balance + deduction.amount
-        db.add(
-            SavingsTransaction(
-                account_id=account.id,
-                txn_type=SavingsTxnType.DEPOSIT,
-                amount=deduction.amount,
-                balance_after=new_balance,
-                narrative="Payroll deduction",
-                performed_by_user_id=current_user.id,
-            )
+        savings_txn = SavingsTransaction(
+            account_id=account.id,
+            txn_type=SavingsTxnType.DEPOSIT,
+            amount=deduction.amount,
+            balance_after=new_balance,
+            narrative="Payroll deduction",
+            performed_by_user_id=current_user.id,
         )
+        db.add(savings_txn)
+        db.flush()
         account.balance = new_balance
-        account.last_transaction_at = datetime.utcnow() # type: ignore
-        if account.member: # type: ignore
-            notify_deposit(db, account.member, account.account_number, deduction.amount, new_balance) # type: ignore
+        account.last_transaction_at = datetime.utcnow()
+        post_savings_transaction_gl(db, account, savings_txn, channel="cash", performed_by_user_id=current_user.id)
+        if account.member:
+            notify_deposit(db, account.member, account.account_number, deduction.amount, new_balance)
     else:
         raise ValueError("Deduction line has no loan_id or savings_account_id target.")
 
     deduction.status = DeductionStatus.RECONCILED
-    deduction.reconciled_at = datetime.utcnow() # type: ignore
+    deduction.reconciled_at = datetime.utcnow()
 
 
 @router.get("/files/{payroll_file_id}", response_model=PayrollFileRead)
-def get_payroll_file(payroll_file_id: str, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES))): # type: ignore
+def get_payroll_file(payroll_file_id: str, db: Session = Depends(get_db), current_user: User = Depends(require_roles(*HR_ROLES))):
     payroll_file = db.get(PayrollFile, payroll_file_id)
     if not payroll_file:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll file not found.")

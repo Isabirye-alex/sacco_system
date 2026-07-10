@@ -16,6 +16,13 @@ class SavingsProductCreate(BaseModel):
     minimum_balance: Decimal = Decimal("0")
     cooling_period_days: int = 0
     withdrawal_penalty_pct: Decimal = Decimal("0")
+    gl_liability_account_id: Optional[str] = None
+
+
+class SavingsProductUpdate(BaseModel):
+    """Used mainly to link/relink a product's GL liability account after setup."""
+    gl_liability_account_id: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class SavingsProductRead(ORMBase):
@@ -27,6 +34,7 @@ class SavingsProductRead(ORMBase):
     minimum_balance: Decimal
     cooling_period_days: int
     withdrawal_penalty_pct: Decimal
+    gl_liability_account_id: Optional[str] = None
     is_active: bool
 
 
@@ -53,6 +61,13 @@ class SavingsTransactionCreate(BaseModel):
     amount: Decimal = Field(gt=0)
     narrative: Optional[str] = None
     reference: Optional[str] = None
+    # Which "other side" system account this posts against - see
+    # app/services/gl_posting_service.py. "cash" for over-the-counter
+    # transactions (the vast majority of manual teller entries); use
+    # "mobile_money" only if a teller is manually recording something that
+    # actually moved through mobile money without going through the
+    # MarzPay-integrated flow (which posts this automatically instead).
+    channel: str = Field(default="cash", pattern="^(cash|mobile_money)$")
 
 
 class SavingsTransactionRead(ORMBase):
@@ -63,4 +78,5 @@ class SavingsTransactionRead(ORMBase):
     balance_after: Decimal
     narrative: Optional[str] = None
     reference: Optional[str] = None
+    performed_by_user_id: Optional[str] = None
     created_at: datetime

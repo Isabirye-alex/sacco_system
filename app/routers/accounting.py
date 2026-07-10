@@ -12,6 +12,7 @@ from app.core.enums import UserRole
 from app.dependencies import get_current_user, require_roles
 from app.models.accounting import ChartOfAccount, JournalLine
 from app.models.user import User
+from app.schemas.gl_settings import GLSettingsRead, GLSettingsUpdate
 from app.schemas.misc import (
     ChartOfAccountCreate,
     ChartOfAccountRead,
@@ -21,6 +22,7 @@ from app.schemas.misc import (
 )
 from app.services.accounting_service import post_journal_entry # type: ignore
 from app.services.audit_service import record_audit
+from app.services.gl_posting_service import get_or_create_gl_settings # type: ignore
 
 router = APIRouter(prefix="/api/v1/accounting", tags=["Accounting"])
 
@@ -56,7 +58,7 @@ def list_accounts(db: Session = Depends(get_db), current_user: User = Depends(ge
 def create_journal_entry(
     payload: JournalEntryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)),
 ):
     entry = post_journal_entry(
         db=db,
@@ -77,7 +79,7 @@ def create_journal_entry(
 
 
 @router.get("/trial-balance", response_model=list[TrialBalanceLine])
-def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES))): # type: ignore
+def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES))):
     accounts = db.query(ChartOfAccount).all()
     result = []
     for account in accounts:
@@ -85,7 +87,7 @@ def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(re
         credit_total = sum((l.credit for l in account.lines), Decimal("0"))
         if debit_total == 0 and credit_total == 0:
             continue
-        result.append( # type: ignore
+        result.append(
             TrialBalanceLine(
                 account_code=account.code,
                 account_name=account.name,
@@ -93,4 +95,33 @@ def trial_balance(db: Session = Depends(get_db), current_user: User = Depends(re
                 credit=credit_total,
             )
         )
-    return result # type: ignore
+    return result
+
+
+# ---------- GL Settings (the shared "other side" accounts - see gl_posting_service.py) ----------
+@router.get("/gl-settings", response_model=GLSettingsRead)
+def get_gl_settings(db: Session = Depends(get_db), current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES))):
+    settings_row = get_or_create_gl_settings(db)
+    db.commit()  # persists the row if get_or_create_gl_settings just created a blank one
+    return settings_row
+
+
+@router.patch("/gl-settings", response_model=GLSettingsRead)
+def update_gl_settings(
+    payload: GLSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
+):
+    settings_row = get_or_create_gl_settings(db)
+    for account_id in payload.model_dump(exclude_unset=True).values():
+        if account_id and not db.get(ChartOfAccount, account_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chart of account {account_id} not found.")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(settings_row, field, value)
+    record_audit(
+        db, actor_user_id=current_user.id, action="accounting.gl_settings_update", entity_type="GLSettings",
+        entity_id=settings_row.id, details=f"Updated GL settings: {payload.model_dump(exclude_unset=True)}",
+    )
+    db.commit()
+    db.refresh(settings_row)
+    return settings_row

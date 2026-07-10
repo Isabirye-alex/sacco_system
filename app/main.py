@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import warnings
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
@@ -27,6 +29,7 @@ from app.routers import (
 )
 from app.services.risk_service import sweep_dormant_members
 
+warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sacco")
 
@@ -57,21 +60,30 @@ async def lifespan(app: FastAPI):
     if settings.ENVIRONMENT == "development":
         Base.metadata.create_all(bind=engine)
 
-    scheduler.add_job( # type: ignore
-        _run_dormancy_sweep_job,
-        "interval",
-        hours=24,
-        id="dormancy_sweep",
-        replace_existing=True,
-    )
-    scheduler.start() # type: ignore
+    try:
+        scheduler.add_job(  # type: ignore[arg-type]
+            _run_dormancy_sweep_job,
+            "interval",
+            hours=24,
+            id="dormancy_sweep",
+            replace_existing=True,
+        )
+        scheduler.start()  # type: ignore[union-attr]
+    except Exception:
+        logger.exception("Failed to start background scheduler")
+
     logger.info("SACCO API started in '%s' environment.", settings.ENVIRONMENT)
 
-    yield  # The application runs here while yielding control
-
-    # --- SHUTDOWN LOGIC ---
-    logger.info("Shutting down SACCO API...")
-    scheduler.shutdown(wait=False) # type: ignore
+    try:
+        yield  # The application runs here while yielding control
+    finally:
+        # --- SHUTDOWN LOGIC ---
+        logger.info("Shutting down SACCO API...")
+        try:
+            if scheduler.running:
+                scheduler.shutdown(wait=False)  # type: ignore[union-attr]
+        except (RuntimeError, KeyError, asyncio.CancelledError):
+            logger.debug("Scheduler shutdown interrupted")
 
 
 # ---------------------------------------------------------------------------

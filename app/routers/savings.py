@@ -20,12 +20,14 @@ from app.schemas.savings import (
     SavingsAccountRead,
     SavingsProductCreate,
     SavingsProductRead,
+    SavingsProductUpdate,
     SavingsTransactionCreate,
     SavingsTransactionRead,
 )
 from app.services.numbering import generate_savings_account_number
 from app.services.transaction_alerts import notify_deposit, notify_withdrawal
 from app.services.audit_service import record_audit
+from app.services.gl_posting_service import post_savings_transaction_gl
 
 router = APIRouter(prefix="/api/v1/savings", tags=["Savings"])
 
@@ -37,10 +39,15 @@ TELLER_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.TELLER, UserRole.ACCO
 def create_savings_product(
     payload: SavingsProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # pyright: ignore[reportArgumentType]
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
 ):
     product = SavingsProduct(**payload.model_dump())
     db.add(product)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="savings.product_create", entity_type="SavingsProduct",
+        entity_id=product.id, details=f"Created product {product.name} ({product.product_type})",
+    )
     db.commit()
     db.refresh(product)
     return product
@@ -51,12 +58,34 @@ def list_savings_products(db: Session = Depends(get_db), current_user: User = De
     return db.query(SavingsProduct).filter(SavingsProduct.is_active.is_(True)).all()
 
 
+@router.patch("/products/{product_id}", response_model=SavingsProductRead)
+def update_savings_product(
+    product_id: str,
+    payload: SavingsProductUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
+):
+    """Mainly used to link/relink a product's GL liability account - see app/services/gl_posting_service.py."""
+    product = db.get(SavingsProduct, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Savings product not found.")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(product, field, value)
+    record_audit(
+        db, actor_user_id=current_user.id, action="savings.product_update", entity_type="SavingsProduct",
+        entity_id=product.id, details=f"Updated {product.name}: {payload.model_dump(exclude_unset=True)}",
+    )
+    db.commit()
+    db.refresh(product)
+    return product
+
+
 # ---------- Savings Accounts ----------
 @router.post("/accounts", response_model=SavingsAccountRead, status_code=status.HTTP_201_CREATED)
 def open_savings_account(
     payload: SavingsAccountCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*TELLER_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*TELLER_ROLES)),
 ):
     member = db.get(Member, payload.member_id)
     if not member:
@@ -72,6 +101,11 @@ def open_savings_account(
         target_amount=payload.target_amount,
     )
     db.add(account)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="savings.account_open", entity_type="SavingsAccount",
+        entity_id=account.id, details=f"Opened {account.account_number} for {member.member_number} ({product.name})",
+    )
     db.commit()
     db.refresh(account)
     return account
@@ -104,7 +138,7 @@ def post_savings_transaction(
     account_id: str,
     payload: SavingsTransactionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*TELLER_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*TELLER_ROLES)),
 ):
     account = db.get(SavingsAccount, account_id)
     if not account or not account.is_active:
@@ -133,14 +167,17 @@ def post_savings_transaction(
         performed_by_user_id=current_user.id,
     )
     account.balance = new_balance
-    account.last_transaction_at = datetime.utcnow() # type: ignore
-    account.member.last_activity_at = datetime.utcnow() # type: ignore
+    account.last_transaction_at = datetime.utcnow()
+    account.member.last_activity_at = datetime.utcnow()
     db.add(txn)
+    db.flush()  # assigns txn.id, needed below both as a JournalEntry source reference and for the response
+
+    post_savings_transaction_gl(db, account, txn, channel=payload.channel, performed_by_user_id=current_user.id)
 
     if payload.txn_type == SavingsTxnType.DEPOSIT:
-        notify_deposit(db, account.member, account.account_number, payload.amount, new_balance) # type: ignore
+        notify_deposit(db, account.member, account.account_number, payload.amount, new_balance)
     elif payload.txn_type == SavingsTxnType.WITHDRAWAL:
-        notify_withdrawal(db, account.member, account.account_number, payload.amount, new_balance) # type: ignore
+        notify_withdrawal(db, account.member, account.account_number, payload.amount, new_balance)
 
     record_audit(
         db, actor_user_id=current_user.id, action=f"savings.{payload.txn_type.value}",

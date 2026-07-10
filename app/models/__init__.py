@@ -14,6 +14,7 @@ from app.models.loan import (  # noqa: F401
     Collateral,
 )
 from app.models.accounting import ChartOfAccount, JournalEntry, JournalLine  # noqa: F401
+from app.models.gl_settings import GLSettings  # noqa: F401
 from app.models.payroll import Employer, PayrollFile, PayrollDeduction  # noqa: F401
 from app.models.shares import (  # noqa: F401
     ShareProduct,

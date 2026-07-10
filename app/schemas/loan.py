@@ -17,6 +17,13 @@ class LoanProductCreate(BaseModel):
     max_amount: Decimal
     requires_guarantors: bool = True
     min_guarantors: int = 1
+    gl_asset_account_id: Optional[str] = None
+
+
+class LoanProductUpdate(BaseModel):
+    """Used mainly to link/relink a product's GL asset account after setup."""
+    gl_asset_account_id: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class LoanProductRead(ORMBase):
@@ -29,6 +36,7 @@ class LoanProductRead(ORMBase):
     max_amount: Decimal
     requires_guarantors: bool
     min_guarantors: int
+    gl_asset_account_id: Optional[str] = None
     is_active: bool
 
 
@@ -95,6 +103,9 @@ class GuarantorWithLoanRead(GuarantorRead):
 class LoanRepayment(BaseModel):
     amount: Decimal = Field(gt=0)
     reference: Optional[str] = None
+    # Same purpose as SavingsTransactionCreate.channel - which system
+    # account this repayment posts against on the ledger.
+    channel: str = Field(default="cash", pattern="^(cash|mobile_money)$")
 
 
 class LoanApplicationRead(ORMBase):
