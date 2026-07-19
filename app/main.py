@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
+from app.services.risk_service import sweep_dormant_members
 from app.routers import (
     accounting,
     admin,
@@ -22,22 +23,17 @@ from app.routers import (
     loans,
     members,
     mobile_money,
-    notific,
-    notific,
     notifications,
-    referra,
-    referrals,
-    referralslsations,
-    referra,
-    referralsls,
-    referra,
-    referralslsations,
     payroll,
+    referrals,
     risk_compliance,
     savings,
     shares,
 )
+
+from app.services.loan_penalty_service import apply_overdue_penalties
 from app.services.risk_service import sweep_dormant_members
+from app.services.savings_interest_service import post_savings_interest
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +56,37 @@ def _run_dormancy_sweep_job():
         db.close()
 
 
+def _run_penalty_job():
+    db = SessionLocal()
+    try:
+        result = apply_overdue_penalties(db)
+        db.commit()
+        if result["installments_penalized"]:
+            logger.info(
+                "Applied penalties to %d installment(s) across %d loan(s), total UGX %s.",
+                result["installments_penalized"],
+                result["loans_affected"],
+                result["total_penalty"],
+            )
+    finally:
+        db.close()
+
+
+def _run_interest_posting_job():
+    db = SessionLocal()
+    try:
+        result = post_savings_interest(db)
+        db.commit()
+        if result["accounts_posted"]:
+            logger.info(
+                "Posted interest to %d account(s), total UGX %s.",
+                result["accounts_posted"],
+                result["total_interest"],
+            )
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Modern Lifespan Handler (Replaces @app.on_event)
 # ---------------------------------------------------------------------------
@@ -76,6 +103,24 @@ async def lifespan(app: FastAPI):
             "interval",
             hours=24,
             id="dormancy_sweep",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_penalty_job,
+            "interval",
+            hours=24,
+            id="loan_penalties",
+            replace_existing=True,
+        )
+        # Interest posting is idempotent per-calendar-month (see
+        # savings_interest_service.py), so a simple daily check is safe - it
+        # only actually posts anything on accounts that haven't been posted
+        # yet this month, regardless of which day of the month this runs.
+        scheduler.add_job(
+            _run_interest_posting_job,
+            "interval",
+            hours=24,
+            id="savings_interest",
             replace_existing=True,
         )
         scheduler.start()  # type: ignore[union-attr]
