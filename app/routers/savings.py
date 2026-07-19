@@ -28,6 +28,7 @@ from app.services.numbering import generate_savings_account_number
 from app.services.transaction_alerts import notify_deposit, notify_withdrawal
 from app.services.audit_service import record_audit
 from app.services.gl_posting_service import post_savings_transaction_gl
+from app.services.savings_interest_service import post_savings_interest
 
 router = APIRouter(prefix="/api/v1/savings", tags=["Savings"])
 
@@ -198,3 +199,23 @@ def list_savings_transactions(
     if not account:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Savings account not found.")
     return account.transactions
+
+
+@router.post("/post-interest")
+def trigger_interest_posting(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT)),
+):
+    """
+    Manually triggers monthly interest posting (also runs automatically on
+    a schedule, see app/main.py). Idempotent per calendar month - accounts
+    already posted this month are skipped, so running this twice in the
+    same month won't double-pay anyone.
+    """
+    result = post_savings_interest(db)
+    record_audit(
+        db, actor_user_id=current_user.id, action="savings.interest_posted_manual", entity_type="SavingsAccount",
+        details=f"Posted interest to {result['accounts_posted']} account(s), total UGX {result['total_interest']}",
+    )
+    db.commit()
+    return result

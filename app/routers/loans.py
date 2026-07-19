@@ -3,7 +3,7 @@ Credit / Loan Management endpoints: product setup, applications, guarantor
 workflow, approval/rejection, disbursement, and repayments. Disbursement and
 repayment operations post balancing entries to the general ledger.
 """
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,11 +18,14 @@ from app.core.enums import (
     UserRole,
 )
 from app.dependencies import get_current_user, require_roles
+from app.models.group import GroupLoanGuarantee, MemberGroup
 from app.models.loan import Collateral, Guarantor, LoanApplication, LoanProduct, LoanTransaction
 from app.models.member import Member
 from app.models.savings import SavingsAccount, SavingsTransaction
 from app.models.user import User
 from app.schemas.loan import (
+    GroupGuaranteeCreate,
+    GroupGuaranteeRead,
     GuarantorResponse,
     GuarantorWithLoanRead,
     LoanApplicationCreate,
@@ -33,12 +36,14 @@ from app.schemas.loan import (
     LoanProductCreate,
     LoanProductRead,
     LoanProductUpdate,
+    LoanReschedule,
     LoanRepayment,
     LoanTransactionRead,
     RepaymentScheduleRead,
 )
 from app.services.audit_service import record_audit
 from app.services.gl_posting_service import post_loan_disbursement_gl, post_loan_repayment_gl
+from app.services.loan_calculator import build_reducing_balance_schedule
 from app.services.loan_disbursement_service import activate_disbursed_loan
 from app.services.loan_repayment_service import apply_loan_repayment
 from app.services.numbering import generate_loan_number
@@ -215,6 +220,96 @@ def respond_to_guarantee(
     return guarantor.loan
 
 
+# ---------- Group Guarantee Workflow ----------
+@router.post(
+    "/applications/{loan_id}/group-guarantees", response_model=GroupGuaranteeRead, status_code=status.HTTP_201_CREATED
+)
+def add_group_guarantee(
+    loan_id: str,
+    payload: GroupGuaranteeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Attaches a whole table-banking group as a collective guarantor of a
+    loan, alongside or instead of individual guarantors. Unlike an
+    individual guarantor (who accepts/declines themselves), a group
+    guarantee is approved on the group's behalf by staff - see the
+    approve endpoint below. That's a deliberate simplification: modeling
+    an actual quorum vote among group members is a bigger workflow than
+    this system's group management currently supports.
+    """
+    loan = db.get(LoanApplication, loan_id)
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found.")
+    if loan.status not in (LoanStatus.PENDING, LoanStatus.UNDER_REVIEW):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This loan is no longer pending review.")
+    group = db.get(MemberGroup, payload.group_id)
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found.")
+
+    guarantee = GroupLoanGuarantee(
+        group_id=payload.group_id, loan_id=loan_id, amount_guaranteed=payload.amount_guaranteed
+    )
+    db.add(guarantee)
+    db.flush()
+    record_audit(
+        db, actor_user_id=current_user.id, action="loan.group_guarantee_add", entity_type="LoanApplication",
+        entity_id=loan_id, details=f"Group {group.name} asked to guarantee {payload.amount_guaranteed} on {loan.loan_number}",
+    )
+    db.commit()
+    db.refresh(guarantee)
+    return guarantee
+
+
+@router.get("/applications/{loan_id}/group-guarantees", response_model=list[GroupGuaranteeRead])
+def list_group_guarantees(
+    loan_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    return db.query(GroupLoanGuarantee).filter(GroupLoanGuarantee.loan_id == loan_id).all()
+
+
+@router.get("/groups/{group_id}/guarantees", response_model=list[GroupGuaranteeRead])
+def list_guarantees_by_group(
+    group_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """All loans a given group has been asked to guarantee - for the group's officials to review."""
+    return (
+        db.query(GroupLoanGuarantee)
+        .filter(GroupLoanGuarantee.group_id == group_id)
+        .order_by(GroupLoanGuarantee.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/group-guarantees/{guarantee_id}/approve", response_model=GroupGuaranteeRead)
+def approve_group_guarantee(
+    guarantee_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
+):
+    """
+    Staff-confirmed approval that the group has agreed to guarantee this
+    loan (confirmed with the group's chair/treasurer outside the system -
+    see the module docstring above on why this isn't a live member vote).
+    """
+    guarantee = db.get(GroupLoanGuarantee, guarantee_id)
+    if not guarantee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group guarantee not found.")
+    if guarantee.approved:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This group guarantee is already approved.")
+    guarantee.approved = True
+    guarantee.approved_by_user_id = current_user.id
+    guarantee.approved_at = datetime.utcnow()
+    record_audit(
+        db, actor_user_id=current_user.id, action="loan.group_guarantee_approve", entity_type="LoanApplication",
+        entity_id=guarantee.loan_id, details=f"Approved group guarantee of {guarantee.amount_guaranteed}",
+    )
+    db.commit()
+    db.refresh(guarantee)
+    return guarantee
+
+
 # ---------- Approval Workflow ----------
 @router.post("/applications/{loan_id}/decision", response_model=LoanApplicationDetailRead)
 def decide_loan_application(
@@ -235,6 +330,16 @@ def decide_loan_application(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="All guarantors must respond before the loan can be approved.",
+            )
+        pending_group_guarantees = (
+            db.query(GroupLoanGuarantee)
+            .filter(GroupLoanGuarantee.loan_id == loan.id, GroupLoanGuarantee.approved.is_(False))
+            .count()
+        )
+        if pending_group_guarantees:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="All group guarantees must be approved before the loan can be approved.",
             )
         loan.status = LoanStatus.APPROVED
         loan.amount_approved = payload.amount_approved or loan.amount_requested
@@ -365,6 +470,86 @@ def record_loan_repayment(
         entity_id=loan.id, details=f"Repayment of {payload.amount} on {loan.loan_number}",
     )
 
+    db.commit()
+    db.refresh(loan)
+    return loan
+
+
+@router.post("/applications/{loan_id}/reschedule", response_model=LoanApplicationDetailRead)
+def reschedule_loan(
+    loan_id: str,
+    payload: LoanReschedule,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
+):
+    """
+    Rebuilds the repayment schedule for a loan's remaining outstanding
+    principal over a new term (and optionally a new rate), replacing only
+    the unpaid installments - already-paid ones stay on the loan's history
+    untouched. Sets the loan's status to RESCHEDULED as an audit marker,
+    then immediately back to ACTIVE since the loan continues to be repaid
+    against the new schedule; the LoanTransaction and audit log entries
+    are what preserve the fact that a restructuring happened and why.
+    """
+    loan = db.get(LoanApplication, loan_id)
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found.")
+    if loan.status != LoanStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active loans can be rescheduled.")
+
+    # Remaining outstanding principal: for each unpaid installment, the
+    # principal portion not yet covered by whatever partial payment (if
+    # any) has already been applied to it.
+    remaining_principal = Decimal("0")
+    for installment in loan.schedule:
+        if installment.is_paid:
+            continue
+        installment_due = installment.principal_due + installment.interest_due + installment.penalty_due
+        paid_ratio = (installment.amount_paid / installment_due) if installment_due else Decimal("0")
+        remaining_principal += installment.principal_due * (Decimal("1") - paid_ratio)
+
+    if remaining_principal <= 0:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This loan has no remaining principal to reschedule.")
+
+    rate = payload.new_interest_rate_annual if payload.new_interest_rate_annual is not None else loan.product.interest_rate_annual
+    last_paid_number = max((i.installment_number for i in loan.schedule if i.is_paid), default=0)
+
+    # Drop unpaid installments, rebuild from the next installment number.
+    loan.schedule = [i for i in loan.schedule if i.is_paid]
+    new_rows = build_reducing_balance_schedule(
+        principal=remaining_principal,
+        annual_interest_rate_pct=rate,
+        months=payload.new_repayment_months,
+        start_date=date.today(),
+    )
+    from app.models.loan import LoanRepaymentSchedule
+    for offset, (_, due, principal_due, interest_due) in enumerate(new_rows, start=1):
+        loan.schedule.append(
+            LoanRepaymentSchedule(
+                installment_number=last_paid_number + offset,
+                due_date=due,
+                principal_due=principal_due,
+                interest_due=interest_due,
+            )
+        )
+
+    loan.repayment_months = last_paid_number + len(new_rows)
+    loan.status = LoanStatus.RESCHEDULED
+    db.add(
+        LoanTransaction(
+            loan_id=loan.id,
+            txn_type="reschedule",
+            amount=remaining_principal,
+            narrative=f"Rescheduled over {payload.new_repayment_months} months at {rate}% p.a. Reason: {payload.reason}",
+            performed_by_user_id=current_user.id,
+        )
+    )
+    record_audit(
+        db, actor_user_id=current_user.id, action="loan.reschedule", entity_type="LoanApplication",
+        entity_id=loan.id,
+        details=f"Rescheduled {loan.loan_number}: remaining {remaining_principal} over {payload.new_repayment_months} months. Reason: {payload.reason}",
+    )
+    loan.status = LoanStatus.ACTIVE  # continues being repaid against the new schedule
     db.commit()
     db.refresh(loan)
     return loan

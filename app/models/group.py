@@ -46,7 +46,7 @@ class GroupContribution(Base, UUIDPKMixin):
     member_id: Mapped[str] = mapped_column(ForeignKey("members.id"), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     contribution_date: Mapped[date] = mapped_column(default=date.today)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     group: Mapped["MemberGroup"] = relationship(back_populates="contributions")
 
@@ -58,3 +58,9 @@ class GroupLoanGuarantee(Base, UUIDPKMixin):
     loan_id: Mapped[str] = mapped_column(ForeignKey("loan_applications.id"), nullable=False)
     amount_guaranteed: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    group: Mapped["MemberGroup"] = relationship()
+    loan: Mapped["LoanApplication"] = relationship()

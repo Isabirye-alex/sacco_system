@@ -27,3 +27,6 @@ from app.models.notification import Notification  # noqa: F401
 from app.models.mobile_money import MobileMoneyTransaction  # noqa: F401
 from app.models.group import MemberGroup, GroupMembership, GroupContribution, GroupLoanGuarantee  # noqa: F401
 from app.models.risk_compliance import RiskFlag, ComplianceReport  # noqa: F401
+from app.models.referral import Referral  # noqa: F401
+from app.models.system_settings_model import SystemSettings  # noqa: F401
+from app.models.hr_payroll import Employee, PayrollRun, Payslip  # noqa: F401

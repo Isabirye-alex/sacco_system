@@ -47,6 +47,10 @@ class MemberCreate(BaseModel):
     employer_id: Optional[str] = None
     next_of_kin: list[NextOfKinCreate] = []
     trusted_contacts: list[TrustedContactCreate] = []
+    # If this member was referred by an existing member (see the Referrals
+    # module), citing the code here links the two and marks the referral
+    # REGISTERED so staff can pay out the referrer's commission.
+    referral_code: Optional[str] = None
 
 
 class MemberUpdate(BaseModel):

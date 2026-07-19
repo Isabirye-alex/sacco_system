@@ -1,8 +1,8 @@
 """
 Notification service: queues notifications and dispatches them through the
-configured channel (email/SMS/push). Actual provider integration (SMTP,
-Africa's Talking, FCM) is stubbed behind a single send() call so the
-providers can be swapped in without touching calling code.
+configured channel (email/SMS/push). SMS (MarzSMS) and Email (SMTP) are
+real integrations; Push remains a logging stub - no push provider has been
+requested yet.
 """
 import logging
 from typing import Optional
@@ -38,11 +38,19 @@ def queue_notification(
     return notification
 
 
+def _recipient_email(notification: Notification) -> Optional[str]:
+    if notification.member and notification.member.email:
+        return notification.member.email
+    if notification.user:
+        return notification.user.email
+    return None
+
+
 def dispatch(notification: Notification) -> None:
     """
     Sends the notification through its channel. Raises on failure so the
     caller can mark the notification FAILED with the error message -
-    callers must never let an SMS failure block or roll back the
+    callers must never let an SMS/email failure block or roll back the
     financial transaction that triggered it.
     """
     if notification.channel == NotificationChannel.SMS:
@@ -52,7 +60,14 @@ def dispatch(notification: Notification) -> None:
         from app.integrations.marzsms import send_sms  # local import: keeps this optional at startup
 
         send_sms(recipient=phone, message=notification.body)
+
     elif notification.channel == NotificationChannel.EMAIL:
-        logger.info("Sending EMAIL to member=%s subject=%s", notification.member_id, notification.subject)
+        email = _recipient_email(notification)
+        if not email:
+            raise ValueError("No email address on file for this notification's recipient.")
+        from app.integrations.smtp_client import send_email  # local import: keeps this optional at startup
+
+        send_email(to=email, subject=notification.subject or "Notification", body=notification.body)
+
     elif notification.channel == NotificationChannel.PUSH:
-        logger.info("Sending PUSH to user=%s", notification.user_id)
+        logger.info("Sending PUSH to user=%s (no push provider configured yet - logging only)", notification.user_id)

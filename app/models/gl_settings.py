@@ -39,6 +39,18 @@ class GLSettings(Base):
     interest_income_account_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("chart_of_accounts.id"), nullable=True
     )
+    # Interest PAID to savers (an expense) - distinct from interest_income_account_id,
+    # which is interest EARNED from loans (income). Used by
+    # app/services/savings_interest_service.py.
+    interest_expense_account_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("chart_of_accounts.id"), nullable=True
+    )
+
+    # Staff payroll accounts - see app/services/gl_posting_service.post_payroll_gl
+    salaries_expense_account_id: Mapped[Optional[str]] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    nssf_expense_account_id: Mapped[Optional[str]] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    paye_payable_account_id: Mapped[Optional[str]] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    nssf_payable_account_id: Mapped[Optional[str]] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -47,3 +59,10 @@ class GLSettings(Base):
     interest_income_account: Mapped[Optional["ChartOfAccount"]] = relationship(
         foreign_keys=[interest_income_account_id]
     )
+    interest_expense_account: Mapped[Optional["ChartOfAccount"]] = relationship(
+        foreign_keys=[interest_expense_account_id]
+    )
+    salaries_expense_account: Mapped[Optional["ChartOfAccount"]] = relationship(foreign_keys=[salaries_expense_account_id])
+    nssf_expense_account: Mapped[Optional["ChartOfAccount"]] = relationship(foreign_keys=[nssf_expense_account_id])
+    paye_payable_account: Mapped[Optional["ChartOfAccount"]] = relationship(foreign_keys=[paye_payable_account_id])
+    nssf_payable_account: Mapped[Optional["ChartOfAccount"]] = relationship(foreign_keys=[nssf_payable_account_id])

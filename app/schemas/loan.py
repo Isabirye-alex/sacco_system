@@ -72,6 +72,22 @@ class CollateralRead(ORMBase):
     document_reference: Optional[str] = None
 
 
+class GroupGuaranteeCreate(BaseModel):
+    group_id: str
+    amount_guaranteed: Decimal = Field(gt=0)
+
+
+class GroupGuaranteeRead(ORMBase):
+    id: str
+    group_id: str
+    loan_id: str
+    amount_guaranteed: Decimal
+    approved: bool
+    approved_by_user_id: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    created_at: datetime
+
+
 class LoanApplicationCreate(BaseModel):
     member_id: str
     product_id: str
@@ -80,6 +96,12 @@ class LoanApplicationCreate(BaseModel):
     purpose: Optional[str] = None
     guarantors: list[GuarantorCreate] = []
     collaterals: list[CollateralCreate] = []
+
+
+class LoanReschedule(BaseModel):
+    new_repayment_months: int = Field(gt=0)
+    new_interest_rate_annual: Optional[Decimal] = None  # defaults to keeping the product's current rate
+    reason: str
 
 
 class LoanDecision(BaseModel):

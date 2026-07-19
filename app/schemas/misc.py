@@ -22,6 +22,15 @@ class ChartOfAccountCreate(BaseModel):
     account_type: str
 
 
+class ChartOfAccountUpdate(BaseModel):
+    """Code is intentionally not editable - it's the permanent identifier
+    other systems/exports would reference. Recreate the account under a
+    new code if you truly need to change it."""
+    name: Optional[str] = None
+    account_type: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
 class ChartOfAccountRead(ORMBase):
     id: str
     code: str
@@ -223,7 +232,24 @@ class GroupContributionRead(ORMBase):
     contribution_date: date
 
 
-# ---- Risk & Compliance ----
+# ---- Compliance Reports ----
+class ComplianceReportCreate(BaseModel):
+    report_type: str  # e.g. sasra_quarterly, aml_str, annual_return
+    period: str  # e.g. "2026-Q2"
+    file_reference: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class ComplianceReportRead(ORMBase):
+    id: str
+    report_type: str
+    period: str
+    generated_by_user_id: Optional[str] = None
+    file_reference: Optional[str] = None
+    summary: Optional[str] = None
+    submitted: bool
+    submitted_at: Optional[datetime] = None
+    created_at: datetime
 class RiskFlagCreate(BaseModel):
     flag_type: RiskFlagType
     member_id: Optional[str] = None

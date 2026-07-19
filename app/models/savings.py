@@ -49,6 +49,9 @@ class SavingsAccount(Base, UUIDPKMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     opened_date: Mapped[date] = mapped_column(default=date.today)
     last_transaction_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Guards against posting interest twice for the same calendar month -
+    # see app/services/savings_interest_service.py.
+    last_interest_posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     member: Mapped["Member"] = relationship(back_populates="savings_accounts")
     product: Mapped["SavingsProduct"] = relationship(back_populates="accounts")

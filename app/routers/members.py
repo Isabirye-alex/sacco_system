@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.enums import MemberStatus, UserRole
 from app.dependencies import get_current_user, require_roles
 from app.models.member import Member, NextOfKin, TrustedContact
+from app.models.referral import Referral, ReferralStatus
 from app.models.user import User
 from app.schemas.common import Page
 from app.schemas.member import MemberCreate, MemberDetailRead, MemberRead, MemberUpdate
@@ -26,10 +27,21 @@ STAFF_ROLES = (UserRole.ADMIN, UserRole.MANAGER, UserRole.LOAN_OFFICER, UserRole
 def create_member(
     payload: MemberCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*STAFF_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
 ):
     if db.query(Member).filter(Member.national_id == payload.national_id).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A member with this national ID already exists.")
+
+    referral = None
+    if payload.referral_code:
+        referral = db.query(Referral).filter(Referral.referral_code == payload.referral_code.upper()).first()
+        if not referral:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Referral code not found.")
+        if referral.status != ReferralStatus.INVITED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"This referral code has already been used (status: {referral.status.value}).",
+            )
 
     member = Member(
         member_number=generate_member_number(),
@@ -42,13 +54,23 @@ def create_member(
         physical_address=payload.physical_address,
         occupation=payload.occupation,
         employer_id=payload.employer_id,
-        last_activity_at=datetime.utcnow(), # type: ignore
+        last_activity_at=datetime.utcnow(),
     )
     member.next_of_kin = [NextOfKin(**nok.model_dump()) for nok in payload.next_of_kin]
     member.trusted_contacts = [TrustedContact(**tc.model_dump()) for tc in payload.trusted_contacts]
 
     db.add(member)
     db.flush()
+
+    if referral:
+        referral.status = ReferralStatus.REGISTERED
+        referral.registered_member_id = member.id
+        referral.registered_at = datetime.utcnow()
+        record_audit(
+            db, actor_user_id=current_user.id, action="referral.registered", entity_type="Referral",
+            entity_id=referral.id, details=f"{member.member_number} registered via referral code {referral.referral_code}",
+        )
+
     record_audit(
         db, actor_user_id=current_user.id, action="member.create", entity_type="Member",
         entity_id=member.id, details=f"Created member {member.member_number} ({member.first_name} {member.last_name})",
@@ -59,7 +81,7 @@ def create_member(
 
 
 @router.get("", response_model=Page[MemberRead])
-def list_members( # type: ignore
+def list_members(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     q: str | None = Query(None, description="Search by name, member number, or national ID"),
@@ -83,7 +105,7 @@ def list_members( # type: ignore
 
     total = len(db.scalars(stmt).all())
     items = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
-    return Page(items=items, total=total, page=page, page_size=page_size) # type: ignore
+    return Page(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{member_id}", response_model=MemberDetailRead)
@@ -99,7 +121,7 @@ def update_member(
     member_id: str,
     payload: MemberUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*STAFF_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
 ):
     member = db.get(Member, member_id)
     if not member:
@@ -120,7 +142,7 @@ def update_member(
 def exit_member(
     member_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # type: ignore
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
 ):
     """Soft-delete: marks the member as EXITED rather than removing records (audit trail)."""
     member = db.get(Member, member_id)

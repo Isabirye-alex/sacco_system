@@ -69,11 +69,15 @@ def post_savings_transaction_gl(
     performed_by_user_id: Optional[str] = None,
 ) -> Optional[JournalEntry]:
     """
-    Posts a deposit or withdrawal as a balanced entry against the product's
-    configured liability account and the channel's settlement account.
-    Only DEPOSIT and WITHDRAWAL trigger a posting today; interest postings,
-    transfers, and penalties don't have automatic GL wiring yet.
+    Posts a deposit, withdrawal, or interest posting as a balanced entry.
+    Deposits/withdrawals post against the product's liability account and
+    the channel's settlement account. Interest postings debit the shared
+    interest-expense account and credit the product's liability account
+    (the SACCO owes the member more, funded by an expense, not new cash).
     """
+    if txn.txn_type == SavingsTxnType.INTEREST_POSTING:
+        return _post_interest_gl(db, account, txn, performed_by_user_id)
+
     if txn.txn_type not in (SavingsTxnType.DEPOSIT, SavingsTxnType.WITHDRAWAL):
         return None
 
@@ -106,6 +110,39 @@ def post_savings_transaction_gl(
         created_by_user_id=performed_by_user_id,
     )
     return entry
+
+
+def _post_interest_gl(
+    db: Session, account: SavingsAccount, txn: SavingsTransaction, performed_by_user_id: Optional[str]
+) -> Optional[JournalEntry]:
+    liability_account_id = account.product.gl_liability_account_id
+    if not liability_account_id:
+        logger.warning(
+            "Skipping GL posting for interest txn %s: product '%s' has no gl_liability_account_id configured.",
+            txn.id, account.product.name,
+        )
+        return None
+
+    expense_account_id = get_or_create_gl_settings(db).interest_expense_account_id
+    if not expense_account_id:
+        logger.warning(
+            "Skipping GL posting for interest txn %s: interest_expense_account_id not configured in GL settings.",
+            txn.id,
+        )
+        return None
+
+    lines = [
+        {"account_id": expense_account_id, "debit": txn.amount, "credit": 0},
+        {"account_id": liability_account_id, "debit": 0, "credit": txn.amount},
+    ]
+    return post_journal_entry(
+        db,
+        lines=lines,
+        narrative=f"Interest posting - {account.account_number}",
+        source_module="savings",
+        source_reference_id=txn.id,
+        created_by_user_id=performed_by_user_id,
+    )
 
 
 def post_loan_disbursement_gl(
@@ -163,6 +200,54 @@ def post_loan_disbursement_gl(
         source_reference_id=loan.id,
         created_by_user_id=performed_by_user_id,
     )
+
+
+def post_payroll_gl(
+    db: Session,
+    gross_pay: Decimal,
+    paye_amount: Decimal,
+    nssf_employee_amount: Decimal,
+    nssf_employer_amount: Decimal,
+    net_pay: Decimal,
+    loan_deduction_amount: Decimal = Decimal("0"),
+    loan_asset_account_id: Optional[str] = None,
+    narrative: str = "Payroll",
+    performed_by_user_id: Optional[str] = None,
+) -> Optional[JournalEntry]:
+    """
+    Posts a single payslip's payroll cost:
+      Debit  Salaries Expense         = gross_pay
+      Debit  NSSF Employer Expense    = nssf_employer_amount
+      Credit PAYE Payable             = paye_amount
+      Credit NSSF Payable             = nssf_employee_amount + nssf_employer_amount
+      Credit Loans Receivable         = loan_deduction_amount (if any - reduces what the
+                                         employee/member owes on their own SACCO loan)
+      Credit Cash                     = net_pay
+
+    Balances by construction: gross_pay + nssf_employer_amount (debits) always
+    equals paye + nssf_employee + nssf_employer + loan_deduction + net_pay
+    (credits), since net_pay = gross_pay - paye - nssf_employee - loan_deduction.
+    """
+    gl = get_or_create_gl_settings(db)
+    required = [gl.salaries_expense_account_id, gl.nssf_expense_account_id, gl.paye_payable_account_id, gl.nssf_payable_account_id, gl.cash_account_id]
+    if not all(required):
+        logger.warning("Skipping GL posting for payroll (%s): payroll GL accounts are not fully configured.", narrative)
+        return None
+    if loan_deduction_amount > 0 and not loan_asset_account_id:
+        logger.warning("Skipping GL posting for payroll (%s): loan deduction present but no loan asset account resolved.", narrative)
+        return None
+
+    lines = [
+        {"account_id": gl.salaries_expense_account_id, "debit": gross_pay, "credit": 0},
+        {"account_id": gl.nssf_expense_account_id, "debit": nssf_employer_amount, "credit": 0},
+        {"account_id": gl.paye_payable_account_id, "debit": 0, "credit": paye_amount},
+        {"account_id": gl.nssf_payable_account_id, "debit": 0, "credit": nssf_employee_amount + nssf_employer_amount},
+        {"account_id": gl.cash_account_id, "debit": 0, "credit": net_pay},
+    ]
+    if loan_deduction_amount > 0:
+        lines.append({"account_id": loan_asset_account_id, "debit": 0, "credit": loan_deduction_amount})
+
+    return post_journal_entry(db, lines=lines, narrative=narrative, source_module="hr_payroll", created_by_user_id=performed_by_user_id)
 
 
 def post_loan_repayment_gl(

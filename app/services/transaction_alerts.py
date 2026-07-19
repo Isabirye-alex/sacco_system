@@ -29,7 +29,7 @@ def _safe_send(db: Session, member: Member, message: str, event_type: str) -> No
     try:
         dispatch(notification)
         notification.status = NotificationStatus.SENT
-        notification.sent_at = datetime.utcnow() # pyright: ignore[reportDeprecated]
+        notification.sent_at = datetime.utcnow()
     except Exception as exc:  # noqa: BLE001 - SMS must never break the caller's transaction
         notification.status = NotificationStatus.FAILED
         notification.error_message = str(exc)
@@ -66,3 +66,38 @@ def notify_loan_repayment(db: Session, member: Member, loan_number: str, amount:
         f"{loan_number}. Thank you. - {settings.SACCO_NAME}"
     )
     _safe_send(db, member, message, "loan_repayment")
+
+
+def notify_referral_commission(db: Session, member: Member, amount: Decimal, referred_name: str) -> None:
+    message = (
+        f"Dear {member.first_name}, you've earned a UGX {amount:,.2f} referral commission for inviting "
+        f"{referred_name} to join {settings.SACCO_NAME}. It's been credited to your savings account."
+    )
+    _safe_send(db, member, message, "referral_commission")
+
+
+def send_referral_invite(
+    referred_contact: str, referred_name: str, referrer_name: str, referral_code: str, channel: NotificationChannel
+) -> None:
+    """
+    Sends the invite directly to the referred_contact (a non-member - no
+    Member row exists for them yet), so this bypasses the member-bound
+    queue_notification/dispatch pattern used everywhere else and calls the
+    provider client directly. Raises on failure - the referrals router
+    catches it and marks the Referral with an error rather than pretending
+    the invite went out.
+    """
+    message = (
+        f"Hi {referred_name}, {referrer_name} thinks you'd be a great fit for {settings.SACCO_NAME}! "
+        f"Visit our office and mention code {referral_code} to join."
+    )
+    if channel == NotificationChannel.SMS:
+        from app.integrations.marzsms import send_sms
+
+        send_sms(recipient=referred_contact, message=message)
+    elif channel == NotificationChannel.EMAIL:
+        from app.integrations.smtp_client import send_email
+
+        send_email(to=referred_contact, subject=f"You're invited to join {settings.SACCO_NAME}", body=message)
+    else:
+        raise ValueError(f"Referral invites only support SMS or email, got '{channel}'.")

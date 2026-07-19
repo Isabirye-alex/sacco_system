@@ -1,13 +1,26 @@
 """
 Authentication endpoints: registration, login (OAuth2 password flow),
 token refresh, and password change.
+
+Portal separation: the member portal and admin/staff portal each hit a
+different login endpoint, and each rejects the wrong kind of account -
+POST /login is staff-only, POST /member-login is member-only. This is
+enforced here (not just hidden in the frontend) since the JWT itself is
+role-agnostic once issued; without this check a member could always have
+called /login directly and gotten into the staff-shaped frontend's API
+calls (even if the UI didn't show them anything useful, they'd still hold
+a valid token). The `portal` claim embedded in the token is also checked
+on refresh, so a refreshed token can't cross from one portal to the other.
 """
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.enums import UserRole
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -27,6 +40,11 @@ from app.schemas.user import (
 from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+
+STAFF_ROLES = (
+    UserRole.ADMIN, UserRole.MANAGER, UserRole.LOAN_OFFICER, UserRole.ACCOUNTANT,
+    UserRole.HR_OFFICER, UserRole.TELLER, UserRole.AUDITOR,
+)
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -56,8 +74,7 @@ def register(
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def _authenticate(form_data: OAuth2PasswordRequestForm, db: Session) -> User:
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -67,16 +84,42 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account has been deactivated.")
+    return user
 
-    from datetime import datetime
 
-    user.last_login = datetime.utcnow() # type: ignore
-    db.commit()
-
+def _issue_tokens(user: User, portal: str) -> TokenResponse:
     return TokenResponse(
-        access_token=create_access_token(user.id, {"role": user.role.value}),
-        refresh_token=create_refresh_token(user.id),
+        access_token=create_access_token(user.id, {"role": user.role.value, "portal": portal}),
+        refresh_token=create_refresh_token(user.id, {"portal": portal}),
     )
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Staff/admin portal login. Rejects member accounts."""
+    user = _authenticate(form_data, db)
+    if user.role == UserRole.MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is a member account - please sign in through the member portal instead.",
+        )
+    user.last_login = datetime.utcnow()
+    db.commit()
+    return _issue_tokens(user, portal="staff")
+
+
+@router.post("/member-login", response_model=TokenResponse)
+def member_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Member portal login. Rejects staff accounts."""
+    user = _authenticate(form_data, db)
+    if user.role != UserRole.MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This is a staff account - please sign in through the admin portal instead.",
+        )
+    user.last_login = datetime.utcnow()
+    db.commit()
+    return _issue_tokens(user, portal="member")
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -92,10 +135,18 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer active.")
 
-    return TokenResponse(
-        access_token=create_access_token(user.id, {"role": user.role.value}),
-        refresh_token=create_refresh_token(user.id),
-    )
+    # Re-validate the portal boundary on every refresh too, in case a role
+    # changed (e.g. a member account got promoted to staff) since the
+    # original login - the old refresh token shouldn't silently carry the
+    # old portal's access forward.
+    portal = claims.get("portal", "staff")
+    is_member_portal = portal == "member"
+    if is_member_portal and user.role != UserRole.MEMBER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account can no longer use the member portal.")
+    if not is_member_portal and user.role == UserRole.MEMBER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account can no longer use the staff portal.")
+
+    return _issue_tokens(user, portal=portal)
 
 
 @router.get("/me", response_model=UserRead)

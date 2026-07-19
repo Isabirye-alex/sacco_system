@@ -23,7 +23,8 @@ class Notification(Base, UUIDPKMixin):
     status: Mapped[NotificationStatus] = mapped_column(Enum(NotificationStatus), default=NotificationStatus.QUEUED)
     event_type: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)  # e.g. loan_approved, deposit_made
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False) # type: ignore
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    member: Mapped[Optional["Member"]] = relationship() # type: ignore
+    member: Mapped[Optional["Member"]] = relationship()
+    user: Mapped[Optional["User"]] = relationship()
