@@ -18,10 +18,20 @@ from app.routers import (
     admin,
     auth,
     groups,
+    hr_payroll,
     loans,
     members,
     mobile_money,
+    notific,
+    notific,
     notifications,
+    referra,
+    referrals,
+    referralslsations,
+    referra,
+    referralsls,
+    referra,
+    referralslsations,
     payroll,
     risk_compliance,
     savings,
@@ -124,6 +134,8 @@ app.include_router(shares.router)
 app.include_router(notifications.router)
 app.include_router(groups.router)
 app.include_router(risk_compliance.router)
+app.include_router(referrals.router)
+app.include_router(hr_payroll.router)
 
 
 @app.get("/health", tags=["Health"])
