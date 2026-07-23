@@ -36,20 +36,77 @@ def _safe_send(db: Session, member: Member, message: str, event_type: str) -> No
         logger.warning("SMS alert failed for member %s (%s): %s", member.id, event_type, exc)
 
 
+def mask_account_number(account_number: str) -> str:
+    """
+    Masks savings account numbers for privacy in SMS/notification messages.
+    e.g., "SAV-0001-2026" -> "SAV-****2026"
+          "1002345678" -> "****5678"
+          "SA-1002" -> "****"
+    """
+    if not account_number:
+        return ""
+    clean = account_number.strip()
+    if len(clean) <= 4:
+        return "****"
+    if "-" in clean:
+        parts = clean.split("-")
+        prefix = parts[0]
+        rest = "".join(parts[1:])
+        if len(rest) > 4:
+            return f"{prefix}-****{rest[-4:]}"
+        return f"{prefix}-****"
+    return f"****{clean[-4:]}"
+
+
 def notify_deposit(db: Session, member: Member, account_number: str, amount: Decimal, balance: Decimal) -> None:
+    masked_acc = mask_account_number(account_number)
     message = (
         f"Dear {member.first_name}, UGX {amount:,.2f} has been deposited to your "
-        f"{account_number} account. New balance: UGX {balance:,.2f}. - {settings.SACCO_NAME}"
+        f"{masked_acc} account. New balance: UGX {balance:,.2f}. - {settings.SACCO_NAME}"
     )
     _safe_send(db, member, message, "savings_deposit")
 
 
 def notify_withdrawal(db: Session, member: Member, account_number: str, amount: Decimal, balance: Decimal) -> None:
+    masked_acc = mask_account_number(account_number)
     message = (
         f"Dear {member.first_name}, UGX {amount:,.2f} has been withdrawn from your "
-        f"{account_number} account. New balance: UGX {balance:,.2f}. - {settings.SACCO_NAME}"
+        f"{masked_acc} account. New balance: UGX {balance:,.2f}. - {settings.SACCO_NAME}"
     )
     _safe_send(db, member, message, "savings_withdrawal")
+
+
+def notify_new_member(db: Session, member: Member) -> None:
+    message = (
+        f"Welcome to {settings.SACCO_NAME}, {member.first_name}! Your membership account has been "
+        f"successfully created. Member No: {member.member_number}. Thank you for joining us."
+    )
+    _safe_send(db, member, message, "new_member_created")
+
+
+def notify_savings_account_opened(db: Session, member: Member, account_number: str, product_name: str) -> None:
+    masked_acc = mask_account_number(account_number)
+    message = (
+        f"Dear {member.first_name}, your new {product_name} savings account ({masked_acc}) has been "
+        f"successfully created. - {settings.SACCO_NAME}"
+    )
+    _safe_send(db, member, message, "savings_account_opened")
+
+
+def notify_member_status_change(db: Session, member: Member, new_status: str) -> None:
+    message = (
+        f"Dear {member.first_name}, your membership status with {settings.SACCO_NAME} is now "
+        f"{new_status.title()}."
+    )
+    _safe_send(db, member, message, "member_status_changed")
+
+
+def notify_loan_decision(db: Session, member: Member, loan_number: str, decision: str, amount: Decimal) -> None:
+    message = (
+        f"Dear {member.first_name}, your loan application {loan_number} for UGX {amount:,.2f} has been "
+        f"{decision.lower()}. - {settings.SACCO_NAME}"
+    )
+    _safe_send(db, member, message, "loan_decision")
 
 
 def notify_loan_disbursement(db: Session, member: Member, loan_number: str, amount: Decimal) -> None:
@@ -74,6 +131,7 @@ def notify_referral_commission(db: Session, member: Member, amount: Decimal, ref
         f"{referred_name} to join {settings.SACCO_NAME}. It's been credited to your savings account."
     )
     _safe_send(db, member, message, "referral_commission")
+
 
 
 def send_referral_invite(

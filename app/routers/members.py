@@ -17,6 +17,8 @@ from app.schemas.common import Page
 from app.schemas.member import MemberCreate, MemberDetailRead, MemberRead, MemberUpdate
 from app.services.numbering import generate_member_number
 from app.services.audit_service import record_audit
+from app.services.transaction_alerts import notify_member_status_change, notify_new_member
+
 
 router = APIRouter(prefix="/api/v1/members", tags=["Member Management"])
 
@@ -75,6 +77,7 @@ def create_member(
         db, actor_user_id=current_user.id, action="member.create", entity_type="Member",
         entity_id=member.id, details=f"Created member {member.member_number} ({member.first_name} {member.last_name})",
     )
+    notify_new_member(db, member)
     db.commit()
     db.refresh(member)
     return member
@@ -133,6 +136,9 @@ def update_member(
         db, actor_user_id=current_user.id, action="member.update", entity_type="Member",
         entity_id=member.id, details=f"Updated fields: {', '.join(changes.keys())}",
     )
+    if "status" in changes and changes["status"]:
+        new_st = str(changes["status"].value if hasattr(changes["status"], "value") else changes["status"])
+        notify_member_status_change(db, member, new_st)
     db.commit()
     db.refresh(member)
     return member
@@ -149,6 +155,7 @@ def exit_member(
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
     member.status = MemberStatus.EXITED
+    notify_member_status_change(db, member, "EXITED")
     record_audit(
         db, actor_user_id=current_user.id, action="member.exit", entity_type="Member",
         entity_id=member.id, details=f"Exited member {member.member_number}",

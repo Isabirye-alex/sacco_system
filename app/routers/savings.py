@@ -25,7 +25,8 @@ from app.schemas.savings import (
     SavingsTransactionRead,
 )
 from app.services.numbering import generate_savings_account_number
-from app.services.transaction_alerts import notify_deposit, notify_withdrawal
+from app.services.transaction_alerts import notify_deposit, notify_savings_account_opened, notify_withdrawal
+
 from app.services.audit_service import record_audit
 from app.services.gl_posting_service import post_savings_transaction_gl
 from app.services.savings_interest_service import post_savings_interest
@@ -107,6 +108,7 @@ def open_savings_account(
         db, actor_user_id=current_user.id, action="savings.account_open", entity_type="SavingsAccount",
         entity_id=account.id, details=f"Opened {account.account_number} for {member.member_number} ({product.name})",
     )
+    notify_savings_account_opened(db, member, account.account_number, product.name)
     db.commit()
     db.refresh(account)
     return account

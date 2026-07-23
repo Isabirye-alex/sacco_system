@@ -47,7 +47,8 @@ from app.services.loan_calculator import build_reducing_balance_schedule
 from app.services.loan_disbursement_service import activate_disbursed_loan
 from app.services.loan_repayment_service import apply_loan_repayment
 from app.services.numbering import generate_loan_number
-from app.services.transaction_alerts import notify_loan_disbursement, notify_loan_repayment
+from app.services.transaction_alerts import notify_loan_decision, notify_loan_disbursement, notify_loan_repayment
+
 
 router = APIRouter(prefix="/api/v1/loans", tags=["Credit & Loans"])
 
@@ -355,6 +356,8 @@ def decide_loan_application(
             entity_id=loan.id, details=f"Rejected {loan.loan_number}. Notes: {payload.notes or '-'}",
         )
     loan.reviewed_by_user_id = current_user.id
+    if loan.member:
+        notify_loan_decision(db, loan.member, loan.loan_number, loan.status.value, loan.amount_approved or loan.amount_requested)
     db.commit()
     db.refresh(loan)
     return loan
