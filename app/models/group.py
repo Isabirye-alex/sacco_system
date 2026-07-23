@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -64,3 +64,28 @@ class GroupLoanGuarantee(Base, UUIDPKMixin):
 
     group: Mapped["MemberGroup"] = relationship()
     loan: Mapped["LoanApplication"] = relationship()
+
+
+class GroupMeeting(Base, UUIDPKMixin, TimestampMixin):
+    __tablename__ = "group_meetings"
+
+    group_id: Mapped[str] = mapped_column(ForeignKey("member_groups.id"), nullable=False)
+    meeting_date: Mapped[date] = mapped_column(Date, nullable=False)
+    location: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    minutes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    group: Mapped["MemberGroup"] = relationship()
+    attendance: Mapped[list["GroupAttendance"]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan"
+    )
+
+
+class GroupAttendance(Base, UUIDPKMixin):
+    __tablename__ = "group_attendance"
+
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("group_meetings.id"), nullable=False)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id"), nullable=False)
+    is_present: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    meeting: Mapped["GroupMeeting"] = relationship(back_populates="attendance")

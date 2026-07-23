@@ -9,26 +9,96 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.enums import LoanStatus, MemberStatus
+from app.core.enums import LoanStatus, MemberStatus, NotificationChannel
 from app.models.loan import LoanApplication, LoanRepaymentSchedule
 from app.models.member import Member
+from app.services.notification_service import dispatch, queue_notification
 
 
 def sweep_dormant_members(db: Session) -> int:
     """
-    Flags members with no savings/loan activity within the configured
-    dormancy threshold as DORMANT. Returns the count of members updated.
+    Multilevel dormancy detection sweep:
+    - Stage 1 (150 days / 5 months): Warning alert dispatched to Member.
+    - Stage 2 (180 days / 6 months): Member status updated to DORMANT; alert dispatched to Next-of-Kin.
+    - Stage 3 (210 days / 7 months): Escalation alert dispatched to Trusted Contacts.
+    Returns the count of members transitioned to DORMANT.
     """
-    threshold_date = datetime.utcnow() - timedelta(days=settings.DORMANCY_THRESHOLD_MONTHS * 30)
-    stmt = select(Member).where(
+    now = datetime.utcnow()
+    t_stage1 = now - timedelta(days=150)
+    t_stage2 = now - timedelta(days=180)
+    t_stage3 = now - timedelta(days=210)
+
+    dormant_count = 0
+
+    # Stage 1: 5 months (150 days) - Alert Account Holder
+    stage1_stmt = select(Member).where(
         Member.status == MemberStatus.ACTIVE,
         Member.last_activity_at.is_not(None),
-        Member.last_activity_at < threshold_date,
+        Member.last_activity_at <= t_stage1,
+        Member.dormancy_notified_stage < 1,
     )
-    members = db.scalars(stmt).all()
-    for member in members:
+    for member in db.scalars(stage1_stmt).all():
+        member.dormancy_notified_stage = 1
+        notif = queue_notification(
+            db,
+            channel=NotificationChannel.SMS,
+            body=f"Dear {member.first_name}, your account {member.member_number} has been inactive for 5 months. Please initiate a transaction to keep it active.",
+            member_id=member.id,
+            event_type="dormancy_warning_stage1",
+        )
+        try:
+            dispatch(notif)
+        except Exception:
+            pass
+
+    # Stage 2: 6 months (180 days) - Set DORMANT and Alert Next-of-Kin
+    stage2_stmt = select(Member).where(
+        Member.status == MemberStatus.ACTIVE,
+        Member.last_activity_at.is_not(None),
+        Member.last_activity_at <= t_stage2,
+        Member.dormancy_notified_stage < 2,
+    )
+    for member in db.scalars(stage2_stmt).all():
         member.status = MemberStatus.DORMANT
-    return len(members)
+        member.dormancy_notified_stage = 2
+        dormant_count += 1
+        nok_names = ", ".join([nok.full_name for nok in member.next_of_kin]) or "Next-of-Kin"
+        notif = queue_notification(
+            db,
+            channel=NotificationChannel.SMS,
+            body=f"DORMANCY NOTICE: Account {member.member_number} ({member.full_name}) is now DORMANT. Alert sent to registered NOK: {nok_names}.",
+            member_id=member.id,
+            event_type="dormancy_alert_stage2_nok",
+        )
+        try:
+            dispatch(notif)
+        except Exception:
+            pass
+
+    # Stage 3: 7 months (210 days) - Alert Trusted Contacts
+    stage3_stmt = select(Member).where(
+        Member.status == MemberStatus.DORMANT,
+        Member.last_activity_at.is_not(None),
+        Member.last_activity_at <= t_stage3,
+        Member.dormancy_notified_stage < 3,
+    )
+    for member in db.scalars(stage3_stmt).all():
+        member.dormancy_notified_stage = 3
+        tc_names = ", ".join([tc.full_name for tc in member.trusted_contacts]) or "Trusted Contacts"
+        notif = queue_notification(
+            db,
+            channel=NotificationChannel.SMS,
+            body=f"URGENT DORMANCY ESCALATION: Account {member.member_number} ({member.full_name}) inactive for 7 months. Trusted Contacts ({tc_names}) have been notified.",
+            member_id=member.id,
+            event_type="dormancy_alert_stage3_trusted_contact",
+        )
+        try:
+            dispatch(notif)
+        except Exception:
+            pass
+
+    db.commit()
+    return dormant_count
 
 
 def calculate_portfolio_at_risk(db: Session, as_of: date | None = None) -> dict:

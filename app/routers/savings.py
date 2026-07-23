@@ -179,6 +179,16 @@ def post_savings_transaction(
 
     if payload.txn_type == SavingsTxnType.DEPOSIT:
         notify_deposit(db, account.member, account.account_number, payload.amount, new_balance)
+        # Automated AML Deposit Flagging
+        if payload.amount >= Decimal("5000000"):
+            from app.models.risk_compliance import RiskFlag
+            risk_flag = RiskFlag(
+                member_id=account.member_id,
+                flag_type="AML_LARGE_DEPOSIT",
+                severity="HIGH",
+                description=f"Automated AML Alert: Large deposit of {payload.amount} UGX on account {account.account_number}",
+            )
+            db.add(risk_flag)
     elif payload.txn_type == SavingsTxnType.WITHDRAWAL:
         notify_withdrawal(db, account.member, account.account_number, payload.amount, new_balance)
 
@@ -191,6 +201,96 @@ def post_savings_transaction(
     db.commit()
     db.refresh(txn)
     return txn
+
+
+from pydantic import BaseModel, Field
+
+class SavingsTransferRequest(BaseModel):
+    sender_account_id: str
+    recipient_account_number: str
+    amount: Decimal = Field(gt=0)
+    narrative: Optional[str] = "Internal Member Transfer"
+
+
+@router.post("/transfer", status_code=status.HTTP_200_OK)
+def transfer_savings_internal(
+    payload: SavingsTransferRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Executes an internal member-to-member fund transfer between SACCO savings accounts.
+    Atomically debits sender, credits recipient, posts GL entries, and sends alerts.
+    """
+    sender_account = db.get(SavingsAccount, payload.sender_account_id)
+    if not sender_account or not sender_account.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sender savings account not found or inactive.")
+
+    recipient_account = db.query(SavingsAccount).filter(SavingsAccount.account_number == payload.recipient_account_number).first()
+    if not recipient_account or not recipient_account.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient savings account number not found or inactive.")
+
+    if sender_account.id == recipient_account.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot transfer funds to the same savings account.")
+
+    if sender_account.balance - payload.amount < sender_account.product.minimum_balance:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Transfer exceeds available balance. Minimum balance required: {sender_account.product.minimum_balance} UGX.",
+        )
+
+    # Debit Sender
+    sender_new_bal = sender_account.balance - payload.amount
+    sender_txn = SavingsTransaction(
+        account_id=sender_account.id,
+        txn_type=SavingsTxnType.TRANSFER_OUT,
+        amount=payload.amount,
+        balance_after=sender_new_bal,
+        narrative=f"Transfer to {recipient_account.account_number} ({recipient_account.member.full_name}): {payload.narrative}",
+        performed_by_user_id=current_user.id,
+    )
+    sender_account.balance = sender_new_bal
+    sender_account.last_transaction_at = datetime.utcnow()
+    sender_account.member.last_activity_at = datetime.utcnow()
+    db.add(sender_txn)
+
+    # Credit Recipient
+    recip_new_bal = recipient_account.balance + payload.amount
+    recip_txn = SavingsTransaction(
+        account_id=recipient_account.id,
+        txn_type=SavingsTxnType.TRANSFER_IN,
+        amount=payload.amount,
+        balance_after=recip_new_bal,
+        narrative=f"Transfer from {sender_account.account_number} ({sender_account.member.full_name}): {payload.narrative}",
+        performed_by_user_id=current_user.id,
+    )
+    recipient_account.balance = recip_new_bal
+    recipient_account.last_transaction_at = datetime.utcnow()
+    recipient_account.member.last_activity_at = datetime.utcnow()
+    db.add(recip_txn)
+
+    db.flush()
+
+    # GL Postings
+    post_savings_transaction_gl(db, sender_account, sender_txn, performed_by_user_id=current_user.id)
+    post_savings_transaction_gl(db, recipient_account, recip_txn, performed_by_user_id=current_user.id)
+
+    # Notifications
+    notify_withdrawal(db, sender_account.member, sender_account.account_number, payload.amount, sender_new_bal)
+    notify_deposit(db, recipient_account.member, recipient_account.account_number, payload.amount, recip_new_bal)
+
+    record_audit(
+        db, actor_user_id=current_user.id, action="savings.internal_transfer",
+        entity_type="SavingsAccount", entity_id=sender_account.id,
+        details=f"Transferred {payload.amount} UGX from {sender_account.account_number} to {recipient_account.account_number}",
+    )
+
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"Successfully transferred {payload.amount} UGX to {recipient_account.member.full_name} ({recipient_account.account_number})",
+        "sender_balance_after": sender_new_bal,
+    }
 
 
 @router.get("/accounts/{account_id}/transactions", response_model=list[SavingsTransactionRead])

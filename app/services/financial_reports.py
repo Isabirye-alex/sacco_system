@@ -312,3 +312,86 @@ def get_loan_disbursement_vs_recovery(db: Session, start_date: date, end_date: d
         "closed_loans": closed_count,
         "defaulted_loans": defaulted_count,
     }
+
+
+def get_cash_flow_statement(db: Session, start_date: date, end_date: date) -> dict:
+    """
+    Computes Statement of Cash Flows across Operating, Investing, and Financing activities.
+    """
+    from datetime import datetime as dt, time as time_
+    from app.models.savings import SavingsTransaction
+    from app.models.shares import ShareTransaction, DividendPayout
+
+    range_start = dt.combine(start_date, time_.min)
+    range_end = dt.combine(end_date, time_.max)
+
+    # 1. Operating Activities
+    deposits = (
+        db.query(func.coalesce(func.sum(SavingsTransaction.amount), 0))
+        .filter(SavingsTransaction.txn_type == "deposit", SavingsTransaction.created_at >= range_start, SavingsTransaction.created_at <= range_end)
+        .scalar()
+    )
+    withdrawals = (
+        db.query(func.coalesce(func.sum(SavingsTransaction.amount), 0))
+        .filter(SavingsTransaction.txn_type == "withdrawal", SavingsTransaction.created_at >= range_start, SavingsTransaction.created_at <= range_end)
+        .scalar()
+    )
+    loan_disbursements = (
+        db.query(func.coalesce(func.sum(LoanTransaction.amount), 0))
+        .filter(LoanTransaction.txn_type == "disbursement", LoanTransaction.created_at >= range_start, LoanTransaction.created_at <= range_end)
+        .scalar()
+    )
+    loan_repayments = (
+        db.query(func.coalesce(func.sum(LoanTransaction.amount), 0))
+        .filter(LoanTransaction.txn_type == "repayment", LoanTransaction.created_at >= range_start, LoanTransaction.created_at <= range_end)
+        .scalar()
+    )
+
+    dep_dec = Decimal(deposits or 0)
+    wth_dec = Decimal(withdrawals or 0)
+    disb_dec = Decimal(loan_disbursements or 0)
+    rep_dec = Decimal(loan_repayments or 0)
+
+    operating_net = (dep_dec + rep_dec) - (wth_dec + disb_dec)
+
+    # 2. Financing Activities
+    share_purchases = (
+        db.query(func.coalesce(func.sum(ShareTransaction.total_price), 0))
+        .filter(ShareTransaction.txn_type == "BUY", ShareTransaction.created_at >= range_start, ShareTransaction.created_at <= range_end)
+        .scalar()
+    )
+    share_dec = Decimal(share_purchases or 0)
+
+    dividend_payouts = (
+        db.query(func.coalesce(func.sum(DividendPayout.payout_amount), 0))
+        .filter(DividendPayout.paid_at.is_not(None), DividendPayout.paid_at >= range_start, DividendPayout.paid_at <= range_end)
+        .scalar()
+    )
+    div_dec = Decimal(dividend_payouts or 0)
+
+    financing_net = share_dec - div_dec
+
+    # 3. Investing Activities
+    investing_net = Decimal("0.00")
+
+    net_cash_flow = operating_net + financing_net + investing_net
+
+    return {
+        "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
+        "operating_activities": {
+            "member_savings_deposits": str(dep_dec.quantize(TWO_PLACES)),
+            "member_savings_withdrawals": str((-wth_dec).quantize(TWO_PLACES)),
+            "loan_disbursements": str((-disb_dec).quantize(TWO_PLACES)),
+            "loan_repayments_collected": str(rep_dec.quantize(TWO_PLACES)),
+            "net_operating_cash_flow": str(operating_net.quantize(TWO_PLACES)),
+        },
+        "financing_activities": {
+            "share_capital_issued": str(share_dec.quantize(TWO_PLACES)),
+            "dividends_paid": str((-div_dec).quantize(TWO_PLACES)),
+            "net_financing_cash_flow": str(financing_net.quantize(TWO_PLACES)),
+        },
+        "investing_activities": {
+            "net_investing_cash_flow": str(investing_net.quantize(TWO_PLACES)),
+        },
+        "net_cash_flow": str(net_cash_flow.quantize(TWO_PLACES)),
+    }

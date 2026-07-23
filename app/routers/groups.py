@@ -115,3 +115,94 @@ def record_contribution(
 @router.get("/{group_id}/contributions", response_model=list[GroupContributionRead])
 def list_contributions(group_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(GroupContribution).filter(GroupContribution.group_id == group_id).all()
+
+
+# ---------- Group Meetings & Attendance ----------
+from datetime import date
+from pydantic import BaseModel
+
+class AttendanceItemCreate(BaseModel):
+    member_id: str
+    is_present: bool = True
+    notes: Optional[str] = None
+
+class GroupMeetingCreate(BaseModel):
+    meeting_date: date
+    location: Optional[str] = None
+    minutes: Optional[str] = None
+    attendance: list[AttendanceItemCreate] = []
+
+
+@router.post("/{group_id}/meetings", status_code=status.HTTP_201_CREATED)
+def record_group_meeting(
+    group_id: str,
+    payload: GroupMeetingCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*MANAGER_ROLES, UserRole.LOAN_OFFICER)),
+):
+    """
+    Records a group meeting with minutes and member attendance logs.
+    """
+    from app.models.group import GroupAttendance, GroupMeeting
+
+    group = db.get(MemberGroup, group_id)
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found.")
+
+    meeting = GroupMeeting(
+        group_id=group_id,
+        meeting_date=payload.meeting_date,
+        location=payload.location,
+        minutes=payload.minutes,
+    )
+    db.add(meeting)
+    db.flush()
+
+    for item in payload.attendance:
+        db.add(
+            GroupAttendance(
+                meeting_id=meeting.id,
+                member_id=item.member_id,
+                is_present=item.is_present,
+                notes=item.notes,
+            )
+        )
+
+    record_audit(
+        db, actor_user_id=current_user.id, action="group.meeting_record", entity_type="GroupMeeting",
+        entity_id=meeting.id, details=f"Recorded meeting on {payload.meeting_date} for group {group.name}",
+    )
+    db.commit()
+    return {"meeting_id": meeting.id, "group_id": group_id, "attendance_count": len(payload.attendance)}
+
+
+@router.get("/{group_id}/meetings")
+def list_group_meetings(
+    group_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.group import GroupMeeting
+
+    group = db.get(MemberGroup, group_id)
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found.")
+
+    meetings = db.query(GroupMeeting).filter(GroupMeeting.group_id == group_id).all()
+    return [
+        {
+            "meeting_id": m.id,
+            "meeting_date": m.meeting_date,
+            "location": m.location,
+            "minutes": m.minutes,
+            "attendance": [
+                {
+                    "member_id": a.member_id,
+                    "is_present": a.is_present,
+                    "notes": a.notes,
+                }
+                for a in m.attendance
+            ],
+        }
+        for m in meetings
+    ]

@@ -150,10 +150,58 @@ def exit_member(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)),
 ):
-    """Soft-delete: marks the member as EXITED rather than removing records (audit trail)."""
+    """
+    Exits a member after performing strict financial pre-flight safeguards:
+    - Verifies active loans have zero outstanding principal.
+    - Verifies savings account balances are zero.
+    - Verifies active share holdings are zero.
+    """
+    from decimal import Decimal
+    from app.core.enums import LoanStatus
+    from app.models.loan import LoanApplication
+    from app.models.savings import SavingsAccount
+    from app.models.shares import ShareHolding
+
     member = db.get(Member, member_id)
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+
+    # 1. Loan clearance safeguard
+    active_loans = db.scalars(
+        select(LoanApplication).where(
+            LoanApplication.member_id == member_id,
+            LoanApplication.status == LoanStatus.ACTIVE
+        )
+    ).all()
+    for loan in active_loans:
+        if loan.principal_amount - loan.total_repaid > Decimal("0"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Cannot exit member: Active loan {loan.loan_number} has an outstanding balance of {loan.principal_amount - loan.total_repaid} UGX.",
+            )
+
+    # 2. Savings balance clearance safeguard
+    savings_accounts = db.scalars(
+        select(SavingsAccount).where(SavingsAccount.member_id == member_id)
+    ).all()
+    total_savings = sum((sa.balance for sa in savings_accounts), Decimal("0"))
+    if total_savings > Decimal("0"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot exit member: Active savings balance of {total_savings} UGX must be withdrawn or transferred prior to exit.",
+        )
+
+    # 3. Shares clearance safeguard
+    holdings = db.scalars(
+        select(ShareHolding).where(ShareHolding.member_id == member_id)
+    ).all()
+    total_shares = sum((sh.number_of_shares for sh in holdings), 0)
+    if total_shares > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot exit member: Member holds {total_shares} unredeemed shares. Shares must be transferred or redeemed prior to exit.",
+        )
+
     member.status = MemberStatus.EXITED
     notify_member_status_change(db, member, "EXITED")
     record_audit(
@@ -161,3 +209,77 @@ def exit_member(
         entity_id=member.id, details=f"Exited member {member.member_number}",
     )
     db.commit()
+
+
+@router.get("/{member_id}/statement")
+def get_member_statement(
+    member_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Consolidated Member Financial Statement returning member profile,
+    savings balances, active loans & repayment history, shareholdings, and total net worth in the SACCO.
+    """
+    from decimal import Decimal
+    from app.models.loan import LoanApplication
+    from app.models.savings import SavingsAccount
+    from app.models.shares import ShareHolding
+
+    member = db.get(Member, member_id)
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+
+    savings_accounts = db.scalars(select(SavingsAccount).where(SavingsAccount.member_id == member_id)).all()
+    loans = db.scalars(select(LoanApplication).where(LoanApplication.member_id == member_id)).all()
+    holdings = db.scalars(select(ShareHolding).where(ShareHolding.member_id == member_id)).all()
+
+    total_savings = sum((sa.balance for sa in savings_accounts), Decimal("0"))
+    total_shares = sum((sh.number_of_shares for sh in holdings), 0)
+    total_share_val = sum((sh.total_value for sh in holdings), Decimal("0"))
+    total_loan_outstanding = sum((l.principal_amount - l.total_repaid for l in loans if l.status.value == "ACTIVE"), Decimal("0"))
+
+    return {
+        "member_id": member.id,
+        "member_number": member.member_number,
+        "full_name": member.full_name,
+        "status": member.status.value,
+        "date_joined": member.date_joined,
+        "summary": {
+            "total_savings_balance": total_savings,
+            "total_shares_count": total_shares,
+            "total_shares_value": total_share_val,
+            "total_loan_outstanding": total_loan_outstanding,
+            "net_sacco_balance": (total_savings + total_share_val) - total_loan_outstanding,
+        },
+        "savings_accounts": [
+            {
+                "account_id": sa.id,
+                "account_number": sa.account_number,
+                "product_id": sa.product_id,
+                "balance": sa.balance,
+                "status": sa.status.value,
+            }
+            for sa in savings_accounts
+        ],
+        "loans": [
+            {
+                "loan_id": l.id,
+                "loan_number": l.loan_number,
+                "principal": l.principal_amount,
+                "total_repaid": l.total_repaid,
+                "outstanding": l.principal_amount - l.total_repaid,
+                "status": l.status.value,
+            }
+            for l in loans
+        ],
+        "share_holdings": [
+            {
+                "holding_id": sh.id,
+                "product_id": sh.product_id,
+                "number_of_shares": sh.number_of_shares,
+                "total_value": sh.total_value,
+            }
+            for sh in holdings
+        ],
+    }

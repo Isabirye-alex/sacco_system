@@ -191,3 +191,174 @@ def notify_guarantors(
     )
     db.commit()
     return {"guarantors_notified": notified}
+
+
+class LoanRescheduleRequest(BaseModel):
+    new_term_months: int
+    reason: str
+
+
+@router.post("/applications/{loan_id}/reschedule")
+def reschedule_loan(
+    loan_id: str,
+    payload: LoanRescheduleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
+):
+    """
+    Reschedules an active loan: extends/modifies repayment term and recalculates the schedule.
+    """
+    from app.services.loan_calculator import build_reducing_balance_schedule
+    from app.models.loan import LoanRepaymentSchedule
+
+    loan = db.get(LoanApplication, loan_id)
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found.")
+    if loan.status != LoanStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active loans can be rescheduled.")
+
+    outstanding_principal = loan.principal_amount - loan.total_repaid
+    if outstanding_principal <= Decimal("0"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loan principal is already fully paid.")
+
+    # Delete unpaid future schedules
+    for s in loan.schedule:
+        if not s.is_paid:
+            db.delete(s)
+    db.flush()
+
+    # Rebuild schedule for outstanding principal over new_term_months
+    new_schedules = build_reducing_balance_schedule(
+        principal=outstanding_principal,
+        annual_interest_rate=loan.product.interest_rate_annual,
+        term_months=payload.new_term_months,
+        disbursement_date=loan.disbursed_at.date() if loan.disbursed_at else loan.application_date,
+    )
+    for idx, s in enumerate(new_schedules, start=1):
+        db.add(
+            LoanRepaymentSchedule(
+                loan_id=loan.id,
+                installment_number=idx,
+                due_date=s["due_date"],
+                principal_due=s["principal_due"],
+                interest_due=s["interest_due"],
+                total_due=s["total_due"],
+            )
+        )
+
+    loan.repayment_period_months = payload.new_term_months
+    record_audit(
+        db, actor_user_id=current_user.id, action="loan.reschedule", entity_type="LoanApplication",
+        entity_id=loan.id, details=f"Rescheduled loan {loan.loan_number} to {payload.new_term_months} months. Reason: {payload.reason}",
+    )
+    db.commit()
+    db.refresh(loan)
+    return {"loan_id": loan.id, "status": "rescheduled", "new_term_months": payload.new_term_months}
+
+
+class LoanTopUpRequest(BaseModel):
+    additional_principal: Decimal
+    additional_term_months: int
+    reason: str
+
+
+@router.post("/applications/{loan_id}/top-up")
+def top_up_loan(
+    loan_id: str,
+    payload: LoanTopUpRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
+):
+    """
+    Tops up an active loan by adding principal and extending term.
+    """
+    from app.services.loan_calculator import build_reducing_balance_schedule
+    from app.models.loan import LoanRepaymentSchedule, LoanTransaction
+
+    loan = db.get(LoanApplication, loan_id)
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found.")
+    if loan.status != LoanStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active loans can be topped up.")
+
+    new_total_principal = (loan.principal_amount - loan.total_repaid) + payload.additional_principal
+
+    # Delete unpaid schedules
+    for s in loan.schedule:
+        if not s.is_paid:
+            db.delete(s)
+    db.flush()
+
+    new_term = payload.additional_term_months
+    new_schedules = build_reducing_balance_schedule(
+        principal=new_total_principal,
+        annual_interest_rate=loan.product.interest_rate_annual,
+        term_months=new_term,
+        disbursement_date=loan.disbursed_at.date() if loan.disbursed_at else loan.application_date,
+    )
+    for idx, s in enumerate(new_schedules, start=1):
+        db.add(
+            LoanRepaymentSchedule(
+                loan_id=loan.id,
+                installment_number=idx,
+                due_date=s["due_date"],
+                principal_due=s["principal_due"],
+                interest_due=s["interest_due"],
+                total_due=s["total_due"],
+            )
+        )
+
+    loan.principal_amount += payload.additional_principal
+    loan.repayment_period_months = new_term
+
+    db.add(
+        LoanTransaction(
+            loan_id=loan.id,
+            txn_type="topup",
+            amount=payload.additional_principal,
+            narrative=f"Loan top-up: {payload.reason}",
+            performed_by_user_id=current_user.id,
+        )
+    )
+
+    record_audit(
+        db, actor_user_id=current_user.id, action="loan.top_up", entity_type="LoanApplication",
+        entity_id=loan.id, details=f"Top-up of UGX {payload.additional_principal} on {loan.loan_number}. Reason: {payload.reason}",
+    )
+    db.commit()
+    return {"loan_id": loan.id, "status": "topped_up", "added_principal": str(payload.additional_principal)}
+
+
+@router.post("/collateral/{collateral_id}/release")
+def release_collateral(
+    collateral_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*LOAN_OFFICER_ROLES)),
+):
+    """
+    Formally releases loan collateral after verifying the associated loan is cleared/closed.
+    """
+    from datetime import datetime
+    from app.models.loan import Collateral
+
+    collateral = db.get(Collateral, collateral_id)
+    if not collateral:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collateral record not found.")
+
+    loan = collateral.loan
+    outstanding = loan.principal_amount - loan.total_repaid
+    if loan.status == LoanStatus.ACTIVE and outstanding > Decimal("0"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot release collateral: Loan {loan.loan_number} has an outstanding principal balance of {outstanding} UGX.",
+        )
+
+    collateral.is_released = True
+    collateral.released_at = datetime.utcnow()
+
+    record_audit(
+        db, actor_user_id=current_user.id, action="collateral.release", entity_type="Collateral",
+        entity_id=collateral.id, details=f"Released collateral {collateral.collateral_type} ({collateral.document_reference}) for loan {loan.loan_number}",
+    )
+    db.commit()
+    return {"collateral_id": collateral.id, "status": "released", "released_at": collateral.released_at}

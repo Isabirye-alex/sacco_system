@@ -119,5 +119,7 @@ class Collateral(Base, UUIDPKMixin):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     estimated_value: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     document_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_released: Mapped[bool] = mapped_column(Boolean, default=False)
+    released_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     loan: Mapped["LoanApplication"] = relationship(back_populates="collaterals")

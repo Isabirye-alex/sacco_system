@@ -125,3 +125,119 @@ def update_gl_settings(
     db.commit()
     db.refresh(settings_row)
     return settings_row
+
+
+# ---------- Bank Reconciliation ----------
+from datetime import date
+from pydantic import BaseModel
+
+class BankStatementItemCreate(BaseModel):
+    txn_date: date
+    description: str
+    amount: Decimal
+    reference: Optional[str] = None
+
+class BankStatementUploadRequest(BaseModel):
+    bank_name: str
+    account_number: str
+    statement_date: date
+    items: list[BankStatementItemCreate]
+
+
+@router.post("/bank-reconciliation/upload", status_code=status.HTTP_201_CREATED)
+def upload_bank_statement(
+    payload: BankStatementUploadRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)),
+):
+    """
+    Uploads a bank statement and saves items for reconciliation matching.
+    """
+    from app.models.bank_reconciliation import BankStatement, BankStatementTransaction
+
+    stmt = BankStatement(
+        bank_name=payload.bank_name,
+        account_number=payload.account_number,
+        statement_date=payload.statement_date,
+        uploaded_by_user_id=current_user.id,
+    )
+    db.add(stmt)
+    db.flush()
+
+    for item in payload.items:
+        db.add(
+            BankStatementTransaction(
+                statement_id=stmt.id,
+                txn_date=item.txn_date,
+                description=item.description,
+                reference=item.reference,
+                amount=item.amount,
+            )
+        )
+
+    record_audit(
+        db, actor_user_id=current_user.id, action="accounting.bank_statement_upload",
+        entity_type="BankStatement", entity_id=stmt.id,
+        details=f"Uploaded statement for {payload.bank_name} ({payload.account_number}) with {len(payload.items)} item(s)",
+    )
+    db.commit()
+    return {"statement_id": stmt.id, "total_items": len(payload.items)}
+
+
+@router.get("/bank-reconciliation/statements")
+def list_bank_statements(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)),
+):
+    from app.models.bank_reconciliation import BankStatement
+    statements = db.query(BankStatement).all()
+    return [
+        {
+            "id": s.id,
+            "bank_name": s.bank_name,
+            "account_number": s.account_number,
+            "statement_date": s.statement_date,
+            "total_items": len(s.transactions),
+            "matched_items": len([t for t in s.transactions if t.is_matched]),
+        }
+        for s in statements
+    ]
+
+
+class BankReconcileMatchRequest(BaseModel):
+    statement_txn_id: str
+    journal_entry_id: str
+
+
+@router.post("/bank-reconciliation/match")
+def match_bank_transaction(
+    payload: BankReconcileMatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*ACCOUNTANT_ROLES)),
+):
+    """
+    Matches a bank statement transaction against a GL Journal Entry.
+    """
+    from datetime import datetime
+    from app.models.bank_reconciliation import BankStatementTransaction
+    from app.models.accounting import JournalEntry
+
+    txn = db.get(BankStatementTransaction, payload.statement_txn_id)
+    if not txn:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement transaction not found.")
+
+    entry = db.get(JournalEntry, payload.journal_entry_id)
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Journal entry not found.")
+
+    txn.is_matched = True
+    txn.matched_journal_entry_id = entry.id
+    txn.matched_at = datetime.utcnow()
+
+    record_audit(
+        db, actor_user_id=current_user.id, action="accounting.bank_reconcile_match",
+        entity_type="BankStatementTransaction", entity_id=txn.id,
+        details=f"Matched bank line {txn.description} ({txn.amount}) with GL Entry {entry.entry_number}",
+    )
+    db.commit()
+    return {"status": "matched", "statement_txn_id": txn.id, "journal_entry_id": entry.id}

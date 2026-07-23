@@ -17,6 +17,7 @@ from app.models.user import User
 from app.services.financial_reports import (
     get_balance_sheet,
     get_capital_adequacy,
+    get_cash_flow_statement,
     get_dashboard_trends,
     get_income_statement,
     get_liquidity_ratio,
@@ -46,6 +47,16 @@ def income_statement(
     current_user: User = Depends(require_roles(*REPORT_ROLES)),
 ):
     return get_income_statement(db, start_date, end_date)
+
+
+@router.get("/cash-flow")
+def cash_flow_statement(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*REPORT_ROLES)),
+):
+    return get_cash_flow_statement(db, start_date, end_date)
 
 
 @router.get("/liquidity-ratio")

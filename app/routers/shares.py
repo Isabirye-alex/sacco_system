@@ -122,32 +122,71 @@ def record_share_transaction(
 
 
 @router.post("/dividends/declare", status_code=status.HTTP_201_CREATED)
-def declare_dividend( # type: ignore
+def declare_dividend(
     payload: DividendDeclarationCreate,
+    reinvest_to_savings: bool = False,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(*MANAGER_ROLES)), # type: ignore
+    current_user: User = Depends(require_roles(*MANAGER_ROLES)),
 ):
     """
-    Declares a per-share dividend rate and generates a pending payout per
-    member holding. Actual payout crediting is a separate finance step
-    (kept manual/deliberate given the regulatory sensitivity of dividends).
+    Declares a per-share dividend rate and generates a payout per member holding.
+    If `reinvest_to_savings=True`, payouts are automatically credited directly into member savings accounts.
     """
+    from datetime import datetime
+    from app.models.savings import SavingsAccount, SavingsTransaction
+    from app.core.enums import SavingsTxnType
+    from app.services.gl_posting_service import post_savings_transaction_gl
+
     declaration = DividendDeclaration(financial_year=payload.financial_year, rate_per_share=payload.rate_per_share)
     db.add(declaration)
     db.flush()
 
     holdings = db.query(ShareHolding).filter(ShareHolding.number_of_shares > 0).all()
     total = 0
+    reinvested_count = 0
+
     for holding in holdings:
         amount = holding.number_of_shares * payload.rate_per_share
         total += amount
-        db.add(DividendPayout(declaration_id=declaration.id, member_id=holding.member_id, amount=amount))
-    declaration.total_amount = total # type: ignore
+        payout = DividendPayout(declaration_id=declaration.id, member_id=holding.member_id, amount=amount)
+
+        if reinvest_to_savings:
+            savings_acc = db.query(SavingsAccount).filter(
+                SavingsAccount.member_id == holding.member_id,
+                SavingsAccount.is_active.is_(True)
+            ).first()
+            if savings_acc:
+                new_bal = savings_acc.balance + amount
+                txn = SavingsTransaction(
+                    account_id=savings_acc.id,
+                    txn_type=SavingsTxnType.DEPOSIT,
+                    amount=amount,
+                    balance_after=new_bal,
+                    narrative=f"Dividend Reinvestment ({payload.financial_year})",
+                    performed_by_user_id=current_user.id,
+                )
+                savings_acc.balance = new_bal
+                savings_acc.last_transaction_at = datetime.utcnow()
+                db.add(txn)
+                db.flush()
+                post_savings_transaction_gl(db, savings_acc, txn, performed_by_user_id=current_user.id)
+                payout.paid_at = datetime.utcnow()
+                payout.payment_reference = f"REINVEST-{savings_acc.account_number}"
+                reinvested_count += 1
+
+        db.add(payout)
+
+    declaration.total_amount = total
 
     record_audit(
         db, actor_user_id=current_user.id, action="shares.dividend_declare", entity_type="DividendDeclaration",
         entity_id=declaration.id,
-        details=f"Declared {payload.financial_year} dividend at {payload.rate_per_share}/share, UGX {total} to {len(holdings)} holding(s)",
+        details=f"Declared {payload.financial_year} dividend at {payload.rate_per_share}/share, total UGX {total} across {len(holdings)} holding(s). Reinvested: {reinvested_count}",
     )
     db.commit()
-    return {"declaration_id": declaration.id, "total_amount": str(total), "members_paid": len(holdings)} # type: ignore
+    return {
+        "declaration_id": declaration.id,
+        "total_amount": str(total),
+        "members_paid": len(holdings),
+        "reinvested_to_savings": reinvested_count,
+    }
