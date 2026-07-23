@@ -18,6 +18,7 @@ from app.routers import (
     accounting,
     admin,
     auth,
+    branch,
     groups,
     hr_payroll,
     loans,
@@ -26,6 +27,7 @@ from app.routers import (
     notifications,
     payroll,
     referrals,
+    reports,
     risk_compliance,
     savings,
     shares,
@@ -181,6 +183,8 @@ app.include_router(groups.router)
 app.include_router(risk_compliance.router)
 app.include_router(referrals.router)
 app.include_router(hr_payroll.router)
+app.include_router(branch.router)
+app.include_router(reports.router)
 
 
 @app.get("/health", tags=["Health"])

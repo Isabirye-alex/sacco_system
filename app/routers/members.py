@@ -87,7 +87,7 @@ def list_members(
     q: str | None = Query(None, description="Search by name, member number, or national ID"),
     status_filter: MemberStatus | None = Query(None, alias="status"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
+    page_size: int = Query(20, ge=1, le=1000),
 ):
     stmt = select(Member)
     if q:

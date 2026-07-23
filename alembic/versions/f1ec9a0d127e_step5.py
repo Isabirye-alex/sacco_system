@@ -79,6 +79,12 @@ def upgrade() -> None:
         if_not_exists=True,
     )
 
+    op.add_column(
+        'savings_accounts',
+        sa.Column('last_interest_posted_at', sa.DateTime(), nullable=True),
+        if_not_exists=True,
+    )
+
 
 def downgrade() -> None:
     op.drop_index(op.f('ix_referrals_referral_code'), table_name='referrals', if_exists=True)
