@@ -91,14 +91,19 @@ def _run_interest_posting_job():
 
 def _sync_schema_columns():
     from sqlalchemy import text
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE members ADD COLUMN IF NOT EXISTS dormancy_notified_stage INTEGER DEFAULT 0 NOT NULL;"))
-            conn.execute(text("ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS is_released BOOLEAN DEFAULT FALSE NOT NULL;"))
-            conn.execute(text("ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS released_at TIMESTAMP;"))
-            logger.info("Schema column synchronization completed.")
-    except Exception as exc:
-        logger.warning("Schema column sync notice: %s", exc)
+    statements = [
+        "ALTER TABLE members ADD COLUMN IF NOT EXISTS dormancy_notified_stage INT DEFAULT 0;",
+        "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS is_released BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS released_at TIMESTAMP;",
+    ]
+    with engine.connect() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+                logger.info("Successfully executed schema DDL: %s", stmt)
+            except Exception as exc:
+                logger.error("Error executing schema DDL '%s': %s", stmt, exc)
 
 
 # ---------------------------------------------------------------------------

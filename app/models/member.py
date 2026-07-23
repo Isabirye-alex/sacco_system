@@ -29,7 +29,7 @@ class Member(Base, UUIDPKMixin, TimestampMixin):
     status: Mapped[MemberStatus] = mapped_column(Enum(MemberStatus), default=MemberStatus.ACTIVE, nullable=False)
     date_joined: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
     last_activity_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    dormancy_notified_stage: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    dormancy_notified_stage: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0", nullable=True)
 
     user_account: Mapped[Optional["User"]] = relationship(back_populates="member", uselist=False) # type: ignore
     next_of_kin: Mapped[list["NextOfKin"]] = relationship(back_populates="member", cascade="all, delete-orphan")
