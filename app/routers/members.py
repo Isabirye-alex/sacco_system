@@ -283,3 +283,51 @@ def get_member_statement(
             for sh in holdings
         ],
     }
+
+
+@router.post("/{member_id}/deceased-settlement")
+def process_deceased_settlement(
+    member_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
+):
+    """
+    Processes estate financial settlement for a deceased member, marking status DECEASED,
+    calculating net position, and computing beneficiary payouts for Next of Kin.
+    """
+    member = db.get(Member, member_id)
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+
+    statement = get_member_statement(member_id, db, current_user)
+    net_balance = statement["summary"]["net_sacco_balance"]
+
+    member.status = MemberStatus.DECEASED
+
+    nok_payouts = []
+    if member.next_of_kin:
+        total_pct = sum(nok.allocation_percentage for nok in member.next_of_kin) or 100
+        for nok in member.next_of_kin:
+            share_amount = (net_balance * Decimal(str(nok.allocation_percentage))) / Decimal(str(total_pct)) if net_balance > 0 else Decimal("0")
+            nok_payouts.append({
+                "nok_id": nok.id,
+                "name": nok.full_name,
+                "relationship": nok.relationship,
+                "allocation_percentage": nok.allocation_percentage,
+                "payout_amount": share_amount,
+            })
+
+    record_audit(
+        db, actor_user_id=current_user.id, action="member.deceased_settlement", entity_type="Member",
+        entity_id=member.id, details=f"Processed deceased settlement for {member.member_number}. Net estate balance: UGX {net_balance}",
+    )
+    db.commit()
+
+    return {
+        "member_id": member.id,
+        "member_number": member.member_number,
+        "full_name": member.full_name,
+        "status": member.status.value,
+        "net_estate_balance": net_balance,
+        "beneficiary_payouts": nok_payouts,
+    }
