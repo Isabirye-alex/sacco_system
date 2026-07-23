@@ -99,6 +99,19 @@ def initiate_savings_deposit(
     return txn
 
 
+def _extract_marzpay_data(response: dict) -> tuple[Optional[str], Optional[str]]:
+    if not isinstance(response, dict):
+        return None, None
+    data = response.get("data")
+    if not isinstance(data, dict):
+        return None, None
+    tx_data = data.get("transaction") or {}
+    sub_data = data.get("withdrawal") or data.get("disbursement") or data.get("collection") or {}
+    uuid = tx_data.get("uuid") if isinstance(tx_data, dict) else None
+    provider = sub_data.get("provider") if isinstance(sub_data, dict) else None
+    return uuid, provider
+
+
 @router.post("/withdrawals", response_model=MobileMoneyTransactionRead, status_code=status.HTTP_201_CREATED)
 def initiate_savings_withdrawal(
     payload: MobileMoneyWithdrawalRequest,
@@ -111,13 +124,6 @@ def initiate_savings_withdrawal(
     webhook confirms the disbursement actually succeeded (see
     _finalize_success). This avoids deducting a member's balance for a
     payout that MarzPay later fails to deliver.
-
-    Note: this checks sufficient balance at request time, but does not
-    place a hold on the funds. Two withdrawal requests submitted in quick
-    succession could both pass this check before either confirms - a real
-    production deployment should add a reserved/held-balance mechanism to
-    close that race condition. Flagging this rather than pretending it's
-    solved.
     """
     member = db.get(Member, payload.member_id)
     if not member:
@@ -156,17 +162,21 @@ def initiate_savings_withdrawal(
             description=f"Savings withdrawal {account.account_number}",
             callback_url=_callback_url(),
         )
+        uuid, provider = _extract_marzpay_data(response)
+        txn.marzpay_transaction_uuid = uuid
+        txn.provider = provider
+        txn.status = MobileMoneyStatus.PROCESSING
     except MarzPayError as exc:
         txn.status = MobileMoneyStatus.FAILED
         txn.failure_reason = str(exc)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"MarzPay error: {exc}") from exc
-
-    tx_data = response.get("data", {}).get("transaction", {})
-    withdrawal_data = response.get("data", {}).get("withdrawal", {}) or response.get("data", {}).get("disbursement", {})
-    txn.marzpay_transaction_uuid = tx_data.get("uuid")
-    txn.provider = withdrawal_data.get("provider")
-    txn.status = MobileMoneyStatus.PROCESSING
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Mobile Money Gateway Error: {exc}") from exc
+    except Exception as exc:
+        logger.exception("Unexpected error during mobile money withdrawal: %s", exc)
+        txn.status = MobileMoneyStatus.FAILED
+        txn.failure_reason = str(exc)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Mobile Money Error: {exc}") from exc
 
     record_audit(
         db, actor_user_id=current_user.id, action="mobile_money.withdrawal_initiate", entity_type="SavingsAccount",
@@ -224,16 +234,19 @@ def _dispatch_collection(txn: MobileMoneyTransaction, description: str) -> None:
             description=description,
             callback_url=_callback_url(),
         )
+        uuid, provider = _extract_marzpay_data(response)
+        txn.marzpay_transaction_uuid = uuid
+        txn.provider = provider
+        txn.status = MobileMoneyStatus.PROCESSING
     except MarzPayError as exc:
         txn.status = MobileMoneyStatus.FAILED
         txn.failure_reason = str(exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"MarzPay error: {exc}") from exc
-
-    tx_data = response.get("data", {}).get("transaction", {})
-    collection_data = response.get("data", {}).get("collection", {})
-    txn.marzpay_transaction_uuid = tx_data.get("uuid")
-    txn.provider = collection_data.get("provider")
-    txn.status = MobileMoneyStatus.PROCESSING
+    except Exception as exc:
+        logger.exception("Unexpected error during mobile money collection: %s", exc)
+        txn.status = MobileMoneyStatus.FAILED
+        txn.failure_reason = str(exc)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Mobile Money Error: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
