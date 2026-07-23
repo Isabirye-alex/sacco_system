@@ -89,6 +89,18 @@ def _run_interest_posting_job():
         db.close()
 
 
+def _sync_schema_columns():
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE members ADD COLUMN IF NOT EXISTS dormancy_notified_stage INTEGER DEFAULT 0 NOT NULL;"))
+            conn.execute(text("ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS is_released BOOLEAN DEFAULT FALSE NOT NULL;"))
+            conn.execute(text("ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS released_at TIMESTAMP;"))
+            logger.info("Schema column synchronization completed.")
+    except Exception as exc:
+        logger.warning("Schema column sync notice: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Modern Lifespan Handler (Replaces @app.on_event)
 # ---------------------------------------------------------------------------
@@ -96,17 +108,19 @@ def _run_interest_posting_job():
 async def lifespan(app: FastAPI):
     # --- STARTUP LOGIC ---
     try:
+        Base.metadata.create_all(bind=engine)
+        _sync_schema_columns()
+    except Exception as ex:
+        logger.error("Database table initialization error: %s", ex)
+
+    try:
         from alembic.config import Config
         from alembic import command
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")
         logger.info("Alembic database migrations applied to head successfully.")
     except Exception as e:
-        logger.warning("Alembic auto-upgrade fallback notice: %s. Applying Base.metadata.create_all.", e)
-        try:
-            Base.metadata.create_all(bind=engine)
-        except Exception as ex:
-            logger.error("Database table initialization error: %s", ex)
+        logger.warning("Alembic auto-upgrade fallback notice: %s", e)
 
     try:
         scheduler.add_job(  # type: ignore[arg-type]
