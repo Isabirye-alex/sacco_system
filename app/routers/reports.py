@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.core.enums import UserRole
 from app.dependencies import get_current_user, require_roles
 from app.models.user import User
-from app.services.financial_reports_service import (
+from app.services.financial_reports import (
     get_balance_sheet,
     get_capital_adequacy,
     get_dashboard_trends,
