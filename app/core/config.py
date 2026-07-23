@@ -55,11 +55,24 @@ class Settings(BaseSettings):
     # App
     ENVIRONMENT: str = "development"
     DORMANCY_THRESHOLD_MONTHS: int = 6
-    CORS_ORIGINS: str
+    CORS_ORIGINS: str = "*"
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        if not self.CORS_ORIGINS or self.CORS_ORIGINS.strip() == "*":
+            return ["*"]
+        origins = [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        defaults = [
+            "https://sacco-member.vercel.app",
+            "https://sacco-admin.vercel.app",
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5500",
+        ]
+        for d in defaults:
+            if d not in origins:
+                origins.append(d)
+        return origins
 
 @lru_cache
 def get_settings() -> Settings:

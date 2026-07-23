@@ -95,9 +95,18 @@ def _run_interest_posting_job():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- STARTUP LOGIC ---
-    # NOTE: In production, schema changes should be applied via Alembic migrations.
-    if settings.ENVIRONMENT == "development":
-        Base.metadata.create_all(bind=engine)
+    try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Alembic database migrations applied to head successfully.")
+    except Exception as e:
+        logger.warning("Alembic auto-upgrade fallback notice: %s. Applying Base.metadata.create_all.", e)
+        try:
+            Base.metadata.create_all(bind=engine)
+        except Exception as ex:
+            logger.error("Database table initialization error: %s", ex)
 
     try:
         scheduler.add_job(  # type: ignore[arg-type]
@@ -160,7 +169,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=settings.cors_origins_list if "*" not in settings.cors_origins_list else ["*"],
+    allow_origin_regex=r"https?://.*" if "*" in settings.cors_origins_list else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -211,9 +221,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled exception on %s %s", request.method, request.url)
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
-            "detail": "An unexpected error occurred. Please try again or contact support."
+            "detail": str(exc) if settings.ENVIRONMENT != "production" else "An unexpected error occurred. Please try again or contact support."
         },
     )
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
