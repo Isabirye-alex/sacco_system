@@ -312,6 +312,35 @@ def get_mobile_money_transaction(
     txn = db.get(MobileMoneyTransaction, transaction_id)
     if not txn:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found.")
+
+    if txn.status == MobileMoneyStatus.PROCESSING and txn.marzpay_transaction_uuid:
+        try:
+            if txn.direction == MobileMoneyDirection.COLLECTION:
+                verified = marzpay.get_collection(txn.marzpay_transaction_uuid)
+            else:
+                verified = marzpay.get_disbursement(txn.marzpay_transaction_uuid)
+
+            verified_tx = verified.get("data", {}).get("transaction", {})
+            verified_status = verified_tx.get("status")
+            provider_id = (
+                verified.get("data", {}).get("collection", {}).get("provider_transaction_id")
+                or verified.get("data", {}).get("disbursement", {}).get("provider_transaction_id")
+            )
+            if provider_id:
+                txn.provider_transaction_id = provider_id
+
+            if verified_status == "completed":
+                _finalize_success(db, txn)
+                db.commit()
+                db.refresh(txn)
+            elif verified_status in ("failed", "cancelled"):
+                txn.status = MobileMoneyStatus.FAILED if verified_status == "failed" else MobileMoneyStatus.CANCELLED
+                txn.failure_reason = f"MarzPay reported status '{verified_status}'."
+                db.commit()
+                db.refresh(txn)
+        except Exception as exc:
+            logger.warning("MarzPay status check during transaction polling failed: %s", exc)
+
     return txn
 
 
