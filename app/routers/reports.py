@@ -82,6 +82,9 @@ def dashboard_trends(
     current_user: User = Depends(get_current_user),
 ):
     return get_dashboard_trends(db, months)
+
+
+@router.get("/loan-disbursement-recovery")
 def loan_disbursement_recovery(
     start_date: date = Query(...),
     end_date: date = Query(...),

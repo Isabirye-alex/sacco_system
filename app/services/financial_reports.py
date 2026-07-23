@@ -267,6 +267,9 @@ def get_dashboard_trends(db: Session, months: int = 7) -> dict:
         "monthly_loans": monthly_loans,
         "product_distribution": product_distribution,
     }
+
+
+def get_loan_disbursement_vs_recovery(db: Session, start_date: date, end_date: date) -> dict:
     from datetime import datetime as dt, time as time_
 
     range_start = dt.combine(start_date, time_.min)
