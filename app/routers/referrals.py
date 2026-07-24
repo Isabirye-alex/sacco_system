@@ -83,6 +83,57 @@ def create_referral(
     return referral
 
 
+def _get_member_referral_code_dict(db: Session, member_id: str) -> dict:
+    user = db.query(User).filter(User.member_id == member_id).first()
+    if not user:
+        user = db.get(User, member_id)
+
+    code = None
+    if user and getattr(user, "referral_code", None):
+        code = user.referral_code
+    else:
+        existing_ref = db.query(Referral).filter(Referral.referrer_member_id == member_id).first()
+        if existing_ref and existing_ref.referral_code:
+            code = existing_ref.referral_code
+        else:
+            if user:
+                from app.models.user import generate_unique_referral_code
+                code = generate_unique_referral_code(db)
+                user.referral_code = code
+                db.commit()
+            else:
+                from app.models.referral import generate_referral_code
+                code = generate_referral_code()
+
+    base_url = getattr(settings, "PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+    link = f"{base_url}/register?ref={code}"
+    return {
+        "referral_code": code,
+        "code": code,
+        "member_id": member_id,
+        "referral_link": link,
+    }
+
+
+@router.get("/members/{member_id}/code")
+def get_member_referral_code_by_path(
+    member_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _get_member_referral_code_dict(db, member_id)
+
+
+@router.get("/code")
+def get_member_referral_code_by_query(
+    member_id: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    target_id = member_id or (current_user.member_id if current_user.member_id else current_user.id)
+    return _get_member_referral_code_dict(db, target_id)
+
+
 @router.get("/members/{member_id}", response_model=list[ReferralRead])
 def list_member_referrals(member_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return (

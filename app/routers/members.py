@@ -331,3 +331,14 @@ def process_deceased_settlement(
         "net_estate_balance": net_balance,
         "beneficiary_payouts": nok_payouts,
     }
+
+
+@router.get("/{member_id}/referral-code")
+def get_member_referral_code_endpoint(
+    member_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.routers.referrals import _get_member_referral_code_dict
+    return _get_member_referral_code_dict(db, member_id)
+
