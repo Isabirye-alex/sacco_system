@@ -29,6 +29,7 @@ class UserRead(ORMBase):
     full_name: str
     role: UserRole
     is_active: bool
+    is_2fa_enabled: bool = False
     referral_code: Optional[str] = None
     member_id: Optional[str] = None
     last_login: Optional[datetime] = None
@@ -44,6 +45,17 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    requires_2fa: bool = False
+
+
+class TwoFactorSetupResponse(BaseModel):
+    secret: str
+    provisioning_uri: str
+    manual_entry_key: str
+
+
+class TwoFactorVerifyRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
 
 
 class RefreshRequest(BaseModel):

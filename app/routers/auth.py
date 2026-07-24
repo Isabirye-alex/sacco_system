@@ -34,6 +34,8 @@ from app.schemas.user import (
     PasswordChangeRequest,
     RefreshRequest,
     TokenResponse,
+    TwoFactorSetupResponse,
+    TwoFactorVerifyRequest,
     UserCreate,
     UserRead,
 )
@@ -214,4 +216,93 @@ def logout(
     )
     db.commit()
     return {"message": "Logged out successfully."}
+
+
+from app.services.totp_service import generate_provisioning_uri, generate_totp_secret, verify_totp_code
+
+@router.post("/2fa/setup", response_model=TwoFactorSetupResponse)
+def setup_2fa(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generates a new TOTP 2FA secret and provisioning URI for Google Authenticator / Authy.
+    """
+    secret = generate_totp_secret()
+    provisioning_uri = generate_provisioning_uri(secret, current_user.email)
+    
+    current_user.totp_secret = secret
+    db.commit()
+    
+    return TwoFactorSetupResponse(
+        secret=secret,
+        provisioning_uri=provisioning_uri,
+        manual_entry_key=secret,
+    )
+
+
+@router.post("/2fa/enable", status_code=status.HTTP_200_OK)
+def enable_2fa(
+    payload: TwoFactorVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Verifies the first TOTP 6-digit code and enables 2FA for the user account.
+    """
+    if not current_user.totp_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA setup must be initiated first.")
+
+    if not verify_totp_code(current_user.totp_secret, payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid 2FA verification code.")
+
+    current_user.is_2fa_enabled = True
+    record_audit(
+        db, actor_user_id=current_user.id, action="auth.2fa_enabled", entity_type="User",
+        entity_id=current_user.id, details=f"Two-factor authentication enabled for {current_user.email}.",
+    )
+    db.commit()
+    return {"message": "2FA successfully enabled."}
+
+
+@router.post("/2fa/disable", status_code=status.HTTP_200_OK)
+def disable_2fa(
+    payload: TwoFactorVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Disables 2FA after verifying a valid TOTP 6-digit code.
+    """
+    if not current_user.is_2fa_enabled or not current_user.totp_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA is not enabled for this account.")
+
+    if not verify_totp_code(current_user.totp_secret, payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid 2FA verification code.")
+
+    current_user.is_2fa_enabled = False
+    current_user.totp_secret = None
+    record_audit(
+        db, actor_user_id=current_user.id, action="auth.2fa_disabled", entity_type="User",
+        entity_id=current_user.id, details=f"Two-factor authentication disabled for {current_user.email}.",
+    )
+    db.commit()
+    return {"message": "2FA successfully disabled."}
+
+
+@router.post("/2fa/verify", status_code=status.HTTP_200_OK)
+def verify_2fa(
+    payload: TwoFactorVerifyRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Verifies a TOTP 6-digit code during login or high-value actions.
+    """
+    if not current_user.is_2fa_enabled or not current_user.totp_secret:
+        return {"valid": True, "message": "2FA is not required for this account."}
+
+    if not verify_totp_code(current_user.totp_secret, payload.code):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid 2FA verification code.")
+
+    return {"valid": True, "message": "2FA code verified successfully."}
 
