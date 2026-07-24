@@ -70,7 +70,8 @@ def _create_user_and_login(client, db_session, email: str, role: UserRole, passw
     db_session.commit()
     db_session.refresh(user)
 
-    response = client.post("/api/v1/auth/login", data={"username": email, "password": password})
+    endpoint = "/api/v1/auth/member-login" if role == UserRole.MEMBER else "/api/v1/auth/login"
+    response = client.post(endpoint, data={"username": email, "password": password})
     assert response.status_code == 200, response.text
     token = response.json()["access_token"]
     return user, {"Authorization": f"Bearer {token}"}
@@ -78,29 +79,29 @@ def _create_user_and_login(client, db_session, email: str, role: UserRole, passw
 
 @pytest.fixture()
 def admin_headers(client, db_session):
-    _, headers = _create_user_and_login(client, db_session, "admin@sacco.test", UserRole.ADMIN)
+    _, headers = _create_user_and_login(client, db_session, "admin@sacco.org", UserRole.ADMIN)
     return headers
 
 
 @pytest.fixture()
 def manager_headers(client, db_session):
-    _, headers = _create_user_and_login(client, db_session, "manager@sacco.test", UserRole.MANAGER)
+    _, headers = _create_user_and_login(client, db_session, "manager@sacco.org", UserRole.MANAGER)
     return headers
 
 
 @pytest.fixture()
 def teller_headers(client, db_session):
-    _, headers = _create_user_and_login(client, db_session, "teller@sacco.test", UserRole.TELLER)
+    _, headers = _create_user_and_login(client, db_session, "teller@sacco.org", UserRole.TELLER)
     return headers
 
 
 @pytest.fixture()
 def loan_officer_headers(client, db_session):
-    _, headers = _create_user_and_login(client, db_session, "loanofficer@sacco.test", UserRole.LOAN_OFFICER)
+    _, headers = _create_user_and_login(client, db_session, "loanofficer@sacco.org", UserRole.LOAN_OFFICER)
     return headers
 
 
 @pytest.fixture()
 def member_user_headers(client, db_session):
-    _, headers = _create_user_and_login(client, db_session, "member@sacco.test", UserRole.MEMBER)
+    _, headers = _create_user_and_login(client, db_session, "member@sacco.org", UserRole.MEMBER)
     return headers

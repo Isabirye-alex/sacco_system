@@ -21,6 +21,7 @@ from app.routers import (
     branch,
     groups,
     hr_payroll,
+    loan_actions,
     loans,
     members,
     mobile_money,
@@ -205,15 +206,18 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(branch.router)
 app.include_router(members.router)
 app.include_router(savings.router)
 app.include_router(loans.router)
+app.include_router(loan_actions.router)
 app.include_router(mobile_money.router)
 app.include_router(accounting.router)
 app.include_router(payroll.router)
 app.include_router(shares.router)
 app.include_router(notifications.router)
 app.include_router(groups.router)
+app.include_router(reports.router)
 app.include_router(risk_compliance.router)
 app.include_router(referrals.router)
 app.include_router(hr_payroll.router)
