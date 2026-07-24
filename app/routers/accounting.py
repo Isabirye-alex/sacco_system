@@ -3,6 +3,7 @@ Accounting Module endpoints: chart of accounts, manual journal entries,
 and trial balance reporting.
 """
 from decimal import Decimal
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session

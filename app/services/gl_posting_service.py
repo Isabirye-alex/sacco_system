@@ -308,3 +308,45 @@ def post_loan_repayment_gl(
         source_reference_id=loan.id,
         created_by_user_id=performed_by_user_id,
     )
+
+
+def post_loan_writeoff_gl(
+    db: Session,
+    loan: LoanApplication,
+    amount: Decimal,
+    performed_by_user_id: Optional[str] = None,
+) -> Optional[JournalEntry]:
+    """
+    Posts a loan write-off GL entry:
+    Debits Loan Loss Expense account and credits Loan Asset account (Loans Receivable).
+    """
+    asset_account_id = loan.product.gl_asset_account_id
+    if not asset_account_id:
+        logger.warning(
+            "Skipping GL posting for loan write-off %s: product '%s' has no gl_asset_account_id configured.",
+            loan.id, loan.product.name,
+        )
+        return None
+
+    settings_row = get_or_create_gl_settings(db)
+    expense_account_id = getattr(settings_row, "loan_loss_expense_account_id", None)
+    if not expense_account_id:
+        logger.warning(
+            "Skipping GL posting for loan write-off %s: loan_loss_expense_account_id not configured in GL settings.",
+            loan.id,
+        )
+        return None
+
+    lines = [
+        {"account_id": expense_account_id, "debit": amount, "credit": 0},
+        {"account_id": asset_account_id, "debit": 0, "credit": amount},
+    ]
+    return post_journal_entry(
+        db,
+        lines=lines,
+        narrative=f"Loan write-off - {loan.loan_number}",
+        source_module="loans",
+        source_reference_id=loan.id,
+        created_by_user_id=performed_by_user_id,
+    )
+

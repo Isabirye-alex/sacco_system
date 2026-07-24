@@ -119,6 +119,7 @@ def list_contributions(group_id: str, db: Session = Depends(get_db), current_use
 
 # ---------- Group Meetings & Attendance ----------
 from datetime import date
+from typing import Optional
 from pydantic import BaseModel
 
 class AttendanceItemCreate(BaseModel):
