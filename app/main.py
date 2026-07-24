@@ -97,6 +97,8 @@ def _sync_schema_columns():
         "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS is_released BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS released_at TIMESTAMP;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(16);",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64);",
         "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS referrer_id VARCHAR(36);",
         "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS referred_user_id VARCHAR(36);",
         "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS tier INT DEFAULT 1;",
