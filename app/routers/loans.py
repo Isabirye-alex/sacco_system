@@ -556,3 +556,18 @@ def reschedule_loan(
     db.commit()
     db.refresh(loan)
     return loan
+
+
+from app.services.credit_scoring_service import compute_member_credit_score
+
+@router.get("/credit-score/{member_id}")
+def get_member_credit_score_endpoint(
+    member_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Computes an automated credit score (300 to 850 range) for a SACCO member
+    based on savings balance, loan repayment history, share holdings, and guarantor risk exposure.
+    """
+    return compute_member_credit_score(db, member_id)

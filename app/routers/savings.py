@@ -322,3 +322,18 @@ def trigger_interest_posting(
     )
     db.commit()
     return result
+
+
+from fastapi.responses import HTMLResponse
+from app.services.pdf_statement_service import generate_savings_statement_html
+
+@router.get("/accounts/{account_id}/statement/pdf", response_class=HTMLResponse)
+def get_savings_statement_pdf(
+    account_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generates an official printable PDF/HTML Bank Account Statement for a savings account.
+    """
+    return generate_savings_statement_html(db, account_id)

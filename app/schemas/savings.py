@@ -80,3 +80,19 @@ class SavingsTransactionRead(ORMBase):
     reference: Optional[str] = None
     performed_by_user_id: Optional[str] = None
     created_at: datetime
+
+
+class SavingsTransferRequest(BaseModel):
+    source_account_id: str
+    recipient_member_number: str
+    amount: Decimal = Field(gt=0)
+    narrative: Optional[str] = None
+
+
+class SavingsTransferResponse(BaseModel):
+    transfer_reference: str
+    sender_account_id: str
+    recipient_account_id: str
+    recipient_name: str
+    amount: Decimal
+    sender_new_balance: Decimal
