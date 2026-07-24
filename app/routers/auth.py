@@ -47,6 +47,10 @@ STAFF_ROLES = (
 )
 
 
+from app.models.referral import Referral, ReferralStatus
+from app.models.user import User, generate_unique_referral_code
+
+
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(
     payload: UserCreate,
@@ -55,15 +59,47 @@ def register(
 ):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A user with this email already exists.")
+    
+    unique_code = generate_unique_referral_code(db)
     user = User(
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
         role=payload.role,
         member_id=payload.member_id,
+        referral_code=unique_code,
     )
     db.add(user)
     db.flush()
+
+    if payload.ref:
+        tier1_referrer = db.query(User).filter(User.referral_code == payload.ref.strip().upper()).first()
+        if tier1_referrer:
+            if tier1_referrer.id == user.id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Self-referral is not allowed.")
+            
+            tier1_ref = Referral(
+                referrer_id=tier1_referrer.id,
+                referred_user_id=user.id,
+                tier=1,
+                status=ReferralStatus.PENDING,
+            )
+            db.add(tier1_ref)
+
+            tier2_lookup = db.query(Referral).filter(
+                Referral.referred_user_id == tier1_referrer.id,
+                Referral.tier == 1
+            ).first()
+
+            if tier2_lookup:
+                tier2_ref = Referral(
+                    referrer_id=tier2_lookup.referrer_id,
+                    referred_user_id=user.id,
+                    tier=2,
+                    status=ReferralStatus.PENDING,
+                )
+                db.add(tier2_ref)
+
     record_audit(
         db, actor_user_id=actor.id if actor else None, action="auth.user_register", entity_type="User",
         entity_id=user.id,
@@ -72,6 +108,7 @@ def register(
     db.commit()
     db.refresh(user)
     return user
+
 
 
 def _authenticate(form_data: OAuth2PasswordRequestForm, db: Session) -> User:

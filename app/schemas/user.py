@@ -13,6 +13,7 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     role: UserRole = UserRole.MEMBER
     member_id: Optional[str] = None
+    ref: Optional[str] = None  # Optional referral code from front-end registration URL
 
 
 class UserUpdate(BaseModel):
@@ -28,6 +29,7 @@ class UserRead(ORMBase):
     full_name: str
     role: UserRole
     is_active: bool
+    referral_code: Optional[str] = None
     member_id: Optional[str] = None
     last_login: Optional[datetime] = None
     created_at: datetime

@@ -95,6 +95,10 @@ def _sync_schema_columns():
         "ALTER TABLE members ADD COLUMN IF NOT EXISTS dormancy_notified_stage INT DEFAULT 0;",
         "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS is_released BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS released_at TIMESTAMP;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(16);",
+        "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS referrer_id VARCHAR(36);",
+        "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS referred_user_id VARCHAR(36);",
+        "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS tier INT DEFAULT 1;",
     ]
     with engine.connect() as conn:
         for stmt in statements:
@@ -112,20 +116,21 @@ def _sync_schema_columns():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- STARTUP LOGIC ---
-    try:
-        Base.metadata.create_all(bind=engine)
-        _sync_schema_columns()
-    except Exception as ex:
-        logger.error("Database table initialization error: %s", ex)
+    if settings.ENVIRONMENT != "testing":
+        try:
+            Base.metadata.create_all(bind=engine)
+            _sync_schema_columns()
+        except Exception as ex:
+            logger.error("Database table initialization error: %s", ex)
 
-    try:
-        from alembic.config import Config
-        from alembic import command
-        alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
-        logger.info("Alembic database migrations applied to head successfully.")
-    except Exception as e:
-        logger.warning("Alembic auto-upgrade fallback notice: %s", e)
+        try:
+            from alembic.config import Config
+            from alembic import command
+            alembic_cfg = Config("alembic.ini")
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Alembic database migrations applied to head successfully.")
+        except Exception as e:
+            logger.warning("Alembic auto-upgrade fallback notice: %s", e)
 
     try:
         scheduler.add_job(  # type: ignore[arg-type]
@@ -212,8 +217,17 @@ app.include_router(groups.router)
 app.include_router(risk_compliance.router)
 app.include_router(referrals.router)
 app.include_router(hr_payroll.router)
-app.include_router(branch.router)
-app.include_router(reports.router)
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+import os
+
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/dashboard", tags=["Dashboard"])
+def referral_dashboard():
+    return FileResponse("static/dashboard.html")
 
 
 @app.get("/health", tags=["Health"])

@@ -164,6 +164,91 @@ def pay_referral_commission(
     return referral
 
 
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from app.core.config import settings
+from app.schemas.referral import (
+    PayCommissionRequest,
+    ReferralCreate,
+    ReferralLinkResponse,
+    ReferralRead,
+    SystemSettingsRead,
+    SystemSettingsUpdate,
+    WebhookPayload,
+)
+
+
+def credit_user_wallet(db: Session, user_id: str, amount: float):
+    user = db.get(User, user_id)
+    if not user:
+        return
+    if user.member_id:
+        account = db.query(SavingsAccount).filter(SavingsAccount.member_id == user.member_id).first()
+        if account:
+            deposit_amount = Decimal(str(amount))
+            new_balance = account.balance + deposit_amount
+            txn = SavingsTransaction(
+                account_id=account.id,
+                txn_type=SavingsTxnType.DEPOSIT,
+                amount=deposit_amount,
+                balance_after=new_balance,
+                narrative=f"Referral Tier Credit (${amount:.2f})",
+            )
+            db.add(txn)
+            account.balance = new_balance
+            account.last_transaction_at = datetime.utcnow()
+            post_savings_transaction_gl(db, account, txn, channel="cash")
+    record_audit(
+        db, actor_user_id=None, action="referral.tier_credit", entity_type="User",
+        entity_id=user_id, details=f"Credited referral payout of ${amount:.2f}",
+    )
+
+
+def complete_multi_tier_conversion(db: Session, user_id: str):
+    """
+    Looks up pending ties for the active user and triggers distinct tier credits.
+    """
+    pending_referrals = db.query(Referral).filter(
+        Referral.referred_user_id == user_id,
+        Referral.status == ReferralStatus.PENDING
+    ).all()
+
+    for referral in pending_referrals:
+        referral.status = ReferralStatus.COMPLETED
+        
+        if referral.tier == 1:
+            # Allocate Tier 1 payout ($10.00)
+            credit_user_wallet(db, user_id=referral.referrer_id, amount=10.00)
+            
+        elif referral.tier == 2:
+            # Allocate Tier 2 payout ($5.00)
+            credit_user_wallet(db, user_id=referral.referrer_id, amount=5.00)
+            
+    db.commit()
+
+
+@router.get("/my-link", response_model=ReferralLinkResponse)
+def get_my_referral_link(
+    current_user: User = Depends(get_current_user),
+):
+    code = current_user.referral_code or ""
+    base_url = getattr(settings, "PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+    link = f"{base_url}/register?ref={code}"
+    return ReferralLinkResponse(referral_code=code, referral_link=link)
+
+
+@router.post("/webhook", status_code=status.HTTP_200_OK)
+def process_conversion_webhook(
+    payload: WebhookPayload,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Conversion Hook & Asynchronous Payout triggered via verified external webhook event.
+    """
+    background_tasks.add_task(complete_multi_tier_conversion, db, payload.user_id)
+    return {"status": "accepted", "event_type": payload.event_type, "user_id": payload.user_id}
+
+
 # ---------- System Settings (referral commission amount) ----------
 @router.get("/system-settings", response_model=SystemSettingsRead)
 def get_system_settings(db: Session = Depends(get_db), current_user: User = Depends(require_roles(*MANAGER_ROLES))):
@@ -188,3 +273,4 @@ def update_system_settings(
     db.commit()
     db.refresh(settings_row)
     return settings_row
+

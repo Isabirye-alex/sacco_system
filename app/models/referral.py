@@ -13,7 +13,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -22,6 +22,10 @@ from app.models.base import TimestampMixin, UUIDPKMixin
 
 
 class ReferralStatus(str, enum.Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    INVALID = "invalid"
+    # Legacy statuses
     INVITED = "invited"
     REGISTERED = "registered"
     COMMISSION_PAID = "commission_paid"
@@ -29,20 +33,28 @@ class ReferralStatus(str, enum.Enum):
 
 
 def generate_referral_code() -> str:
-    return secrets.token_hex(4).upper()  # e.g. "A1B2C3D4" - short enough to read over a phone call
+    return secrets.token_hex(4).upper()  # e.g. "A1B2C3D4"
 
 
 class Referral(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "referrals"
+    __table_args__ = (
+        UniqueConstraint("referred_user_id", "tier", name="uq_referral_user_tier"),
+    )
 
-    referral_code: Mapped[str] = mapped_column(String(16), unique=True, index=True, default=generate_referral_code)
-    referrer_member_id: Mapped[str] = mapped_column(ForeignKey("members.id"), nullable=False)
+    referrer_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    referred_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    tier: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[ReferralStatus] = mapped_column(Enum(ReferralStatus), default=ReferralStatus.PENDING, nullable=False)
 
-    referred_name: Mapped[str] = mapped_column(String(150), nullable=False)
-    referred_contact: Mapped[str] = mapped_column(String(150), nullable=False)  # phone or email
-    channel: Mapped[NotificationChannel] = mapped_column(Enum(NotificationChannel), nullable=False)
+    # Legacy & supplementary fields
+    referral_code: Mapped[Optional[str]] = mapped_column(String(16), unique=True, index=True, nullable=True, default=generate_referral_code)
+    referrer_member_id: Mapped[Optional[str]] = mapped_column(ForeignKey("members.id"), nullable=True)
 
-    status: Mapped[ReferralStatus] = mapped_column(Enum(ReferralStatus), default=ReferralStatus.INVITED)
+    referred_name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    referred_contact: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)  # phone or email
+    channel: Mapped[Optional[NotificationChannel]] = mapped_column(Enum(NotificationChannel), nullable=True)
+
     invited_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     registered_member_id: Mapped[Optional[str]] = mapped_column(ForeignKey("members.id"), nullable=True)
@@ -55,5 +67,8 @@ class Referral(Base, UUIDPKMixin, TimestampMixin):
     commission_paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     commission_paid_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
-    referrer: Mapped["Member"] = relationship(foreign_keys=[referrer_member_id])
+    referrer_user: Mapped["User"] = relationship(foreign_keys=[referrer_id])
+    referred_user: Mapped["User"] = relationship(foreign_keys=[referred_user_id])
+    referrer: Mapped[Optional["Member"]] = relationship(foreign_keys=[referrer_member_id])
     registered_member: Mapped[Optional["Member"]] = relationship(foreign_keys=[registered_member_id])
+

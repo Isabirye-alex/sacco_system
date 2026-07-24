@@ -43,3 +43,15 @@ class SystemSettingsRead(ORMBase):
     id: str
     referral_commission_amount: Decimal
     updated_at: datetime
+
+
+class ReferralLinkResponse(BaseModel):
+    referral_code: str
+    referral_link: str
+
+
+class WebhookPayload(BaseModel):
+    event_type: str = "payment.success"
+    user_id: str
+    amount_paid: float
+
