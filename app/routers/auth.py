@@ -201,3 +201,17 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect.")
     current_user.hashed_password = hash_password(payload.new_password)
     db.commit()
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    record_audit(
+        db, actor_user_id=current_user.id, action="auth.user_logout", entity_type="User",
+        entity_id=current_user.id, details=f"User {current_user.email} logged out.",
+    )
+    db.commit()
+    return {"message": "Logged out successfully."}
+

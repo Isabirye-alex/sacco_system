@@ -17,7 +17,11 @@ from app.models.user import User
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    x_portal: Optional[str] = Header(default=None, alias="X-Portal"),
+    db: Session = Depends(get_db),
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -30,13 +34,34 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         user_id: str = payload.get("sub") # type: ignore
         if user_id is None: # type: ignore
             raise credentials_exception
+        
+        token_portal = payload.get("portal")
+        if x_portal and token_portal and x_portal.lower() != token_portal.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Token issued for '{token_portal}' portal cannot be used on '{x_portal}' portal.",
+            )
     except JWTError:
         raise credentials_exception
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise credentials_exception
+
+    # Enforce strict cross-portal protection based on user role and token portal claim
+    if token_portal == "staff" and user.role == UserRole.MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Member accounts are not permitted to use staff portal tokens.",
+        )
+    if token_portal == "member" and user.role != UserRole.MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff accounts are not permitted to use member portal tokens.",
+        )
+
     return user
+
 
 
 def require_roles(*allowed_roles: Iterable[UserRole]):
