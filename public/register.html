@@ -1,0 +1,2185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SACCO Management System Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-primary: #071510;
+            --bg-secondary: #0b1f18;
+            --bg-card: rgba(14, 33, 26, 0.75);
+            --bg-card-hover: rgba(22, 48, 38, 0.85);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-color-highlight: rgba(245, 158, 11, 0.35);
+            
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            
+            --accent-primary: #f59e0b;
+            --accent-secondary: #10b981;
+            --accent-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            --emerald-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            --accent-glow: 0 0 25px rgba(245, 158, 11, 0.3);
+            
+            --tier1-color: #10b981;
+            --tier1-bg: rgba(16, 185, 129, 0.14);
+            --tier2-color: #3b82f6;
+            --tier2-bg: rgba(59, 130, 246, 0.14);
+            --pending-color: #f59e0b;
+            --pending-bg: rgba(245, 158, 11, 0.14);
+            
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* Hide raw scrollbars across sidebar & body */
+        body, .sidebar, .nav-menu {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        body::-webkit-scrollbar,
+        .sidebar::-webkit-scrollbar,
+        .nav-menu::-webkit-scrollbar {
+            display: none;
+            width: 0px;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            line-height: 1.5;
+            background-image: 
+                radial-gradient(circle at 10% 15%, rgba(245, 158, 11, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 85%, rgba(16, 185, 129, 0.07) 0%, transparent 40%);
+            background-attachment: fixed;
+        }
+
+        /* App Shell Layout */
+        .app-shell {
+            display: flex;
+            width: 100%;
+            min-height: 100vh;
+        }
+
+        /* ==========================================================================
+           Sidebar Styles
+           ========================================================================== */
+        .sidebar {
+            width: 270px;
+            min-width: 270px;
+            background: rgba(8, 22, 17, 0.92);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px 18px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            margin-bottom: 28px;
+            padding: 0 6px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+
+        .brand-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: var(--radius-md);
+            background: var(--accent-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #071510;
+            font-size: 1.25rem;
+            box-shadow: var(--accent-glow);
+        }
+
+        .brand-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .brand-subtitle {
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            color: var(--accent-primary);
+            text-transform: uppercase;
+        }
+
+        /* Nav Section */
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow-y: auto;
+            flex: 1;
+            padding-right: 4px;
+        }
+
+        .nav-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--text-muted);
+            margin: 16px 8px 6px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            color: var(--text-secondary);
+            font-size: 0.925rem;
+            font-weight: 600;
+            border-radius: var(--radius-md);
+            transition: var(--transition);
+            text-decoration: none;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .nav-item i {
+            font-size: 1.1rem;
+            width: 22px;
+            text-align: center;
+            color: var(--text-muted);
+            transition: var(--transition);
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+        }
+
+        .nav-item:hover i {
+            color: var(--accent-primary);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(217, 119, 6, 0.06) 100%);
+            color: #fbbf24;
+            border-left: 3px solid var(--accent-primary);
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.12);
+        }
+
+        .nav-item.active i {
+            color: #fbbf24;
+        }
+
+        .nav-badge {
+            margin-left: auto;
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.725rem;
+            font-weight: 700;
+        }
+
+        /* Sidebar Footer User Card */
+        .sidebar-footer {
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .user-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .user-info-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-avatar-lg {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            color: #071510;
+            font-size: 0.95rem;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+        }
+
+        .user-details {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-role-badge {
+            font-size: 0.675rem;
+            font-weight: 700;
+            color: #10b981;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        .sidebar-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn-sm {
+            flex: 1;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 0.775rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: var(--transition);
+        }
+
+        .action-btn-sm:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* ==========================================================================
+           Main Content Area & Top Header
+           ========================================================================== */
+        .main-content {
+            flex: 1;
+            padding: 24px 32px 60px;
+            max-width: 1320px;
+        }
+
+        .top-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .search-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            border-radius: 30px;
+            padding: 8px 18px;
+            width: 380px;
+            transition: var(--transition);
+        }
+
+        .search-container:focus-within {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        .search-container input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            width: 100%;
+        }
+
+        .search-shortcut {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+
+        .news-ticker {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            border-radius: 30px;
+            padding: 6px 16px 6px 8px;
+            font-size: 0.825rem;
+        }
+
+        .ticker-badge {
+            background: var(--accent-gradient);
+            color: #071510;
+            font-weight: 800;
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .ticker-text {
+            color: #fcd34d;
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Welcome Section */
+        .welcome-card {
+            background: linear-gradient(135deg, rgba(14, 33, 26, 0.9) 0%, rgba(22, 48, 38, 0.7) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 24px 28px;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .welcome-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .welcome-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Quick Action Buttons */
+        .quick-actions-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        .action-pill {
+            flex: 1;
+            padding: 14px 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+        }
+
+        .action-pill i {
+            font-size: 1.1rem;
+            color: var(--accent-primary);
+        }
+
+        .action-pill:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-color-highlight);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        }
+
+        /* Grid Layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 28px;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+
+        @media (max-width: 1100px) {
+            .grid-4 { grid-template-columns: repeat(2, 1fr); }
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+
+        /* Stat Cards */
+        .stat-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-color-highlight);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--accent-gradient);
+            opacity: 0;
+            transition: var(--transition);
+        }
+
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+
+        .stat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .stat-title {
+            font-size: 0.825rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-icon-wrapper {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+
+        .icon-total { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .icon-tier1 { background: var(--tier1-bg); color: var(--tier1-color); }
+        .icon-tier2 { background: var(--tier2-bg); color: var(--tier2-color); }
+        .icon-network { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+
+        .stat-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.95rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+            color: #ffffff;
+        }
+
+        .stat-subtext {
+            font-size: 0.775rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Referral Link Banner Card */
+        .referral-banner {
+            background: linear-gradient(135deg, rgba(14, 33, 26, 0.95) 0%, rgba(22, 48, 38, 0.8) 100%);
+            border: 1px solid var(--border-color-highlight);
+            border-radius: var(--radius-lg);
+            padding: 24px 28px;
+            margin-bottom: 28px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .banner-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .banner-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .banner-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .referral-input-group {
+            display: flex;
+            gap: 12px;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 6px 6px 6px 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            align-items: center;
+        }
+
+        .referral-input-group input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 0.925rem;
+            width: 100%;
+            font-weight: 500;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+
+        .btn-primary {
+            background: var(--accent-gradient);
+            color: #071510;
+            font-weight: 700;
+            box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+        }
+
+        .btn-primary:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.5);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-success {
+            background: var(--emerald-gradient);
+            color: white;
+        }
+
+        .badge-code {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border-radius: var(--radius-sm);
+            font-weight: 800;
+            font-size: 0.875rem;
+            letter-spacing: 1px;
+        }
+
+        /* Main Section Cards & Tabs */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 28px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .tab {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .tab.active {
+            background: var(--accent-gradient);
+            color: #071510;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        }
+
+        /* Data Tables */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.775rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-secondary);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-primary);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .status-pending { background: var(--pending-bg); color: var(--pending-color); }
+        .status-completed { background: var(--tier1-bg); color: var(--tier1-color); }
+
+        .tier-badge {
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+
+        .tier-1 { background: var(--tier1-bg); color: var(--tier1-color); }
+        .tier-2 { background: var(--tier2-bg); color: var(--tier2-color); }
+
+        /* Demo Panels */
+        .demo-panel {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.825rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            background: #0f291e;
+            color: white;
+            padding: 14px 20px;
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--accent-primary);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+            opacity: 0.4;
+        }
+
+        /* View Section Toggle */
+        .view-section {
+            display: block;
+        }
+        .view-section.hidden {
+            display: none !important;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(4, 13, 9, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-card {
+            background: rgba(11, 31, 24, 0.96);
+            border: 1px solid var(--border-color-highlight);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 520px;
+            padding: 28px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            transform: translateY(20px);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.active .modal-card {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .modal-close:hover {
+            color: #ef4444;
+        }
+
+        /* Vault Specific Card Styles */
+        .vault-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .vault-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 16px;
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .vault-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-color-highlight);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        }
+
+        .vault-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .vault-title-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .vault-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%);
+            border: 1px solid var(--border-color-highlight);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: #fbbf24;
+        }
+
+        .vault-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .vault-account {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            margin: 8px 0;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            border-radius: 20px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .vault-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 12px 14px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .metric-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .metric-value {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .vault-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: 0.8rem;
+            border-radius: var(--radius-sm);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-shell">
+        <!-- Modern Left Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="#" class="brand">
+                    <div class="brand-icon">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div class="brand-text">
+                        SACCO
+                        <span class="brand-subtitle">PRO SYSTEM</span>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="nav-menu">
+                <div class="nav-label">Main Menu</div>
+                <a href="#" class="nav-item active" onclick="switchMainView('dashboardView', this)">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" onclick="switchMainView('vaultsView', this)">
+                    <i class="fa-solid fa-vault"></i>
+                    <span>Target Vaults</span>
+                    <span class="nav-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">NEW</span>
+                </a>
+                <a href="#" class="nav-item" onclick="setActiveNav(this)">
+                    <i class="fa-solid fa-wallet"></i>
+                    <span>Savings</span>
+                </a>
+                <a href="#" class="nav-item" onclick="setActiveNav(this)">
+                    <i class="fa-solid fa-hand-holding-dollar"></i>
+                    <span>Loans</span>
+                </a>
+                <a href="#" class="nav-item" onclick="setActiveNav(this)">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Shares</span>
+                </a>
+                <a href="#" class="nav-item" onclick="setActiveNav(this)">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Groups</span>
+                </a>
+
+                <div class="nav-label">Management</div>
+                <a href="#" class="nav-item" onclick="setActiveNav(this)">
+                    <i class="fa-solid fa-bell"></i>
+                    <span>Notifications</span>
+                    <span class="nav-badge">3</span>
+                </a>
+                <a href="#" class="nav-item" onclick="setActiveNav(this)">
+                    <i class="fa-solid fa-toolbox"></i>
+                    <span>Member Tools</span>
+                </a>
+                <a href="#" class="nav-item" onclick="setActiveNav(this)">
+                    <i class="fa-solid fa-sitemap"></i>
+                    <span>Referrals</span>
+                </a>
+            </nav>
+
+            <!-- Bottom Profile & Actions Section -->
+            <div class="sidebar-footer">
+                <div class="user-card">
+                    <div class="user-info-row">
+                        <div class="user-avatar-lg" id="sidebarAvatar">IA</div>
+                        <div class="user-details">
+                            <span class="user-name" id="sidebarUserName">Isabirye Alex</span>
+                            <span class="user-role-badge" id="sidebarUserRole">MEMBER • MB26071980</span>
+                        </div>
+                    </div>
+                    <div class="sidebar-actions">
+                        <button class="action-btn-sm" onclick="toggleDarkMode()">
+                            <i class="fa-solid fa-moon"></i> Dark Mode
+                        </button>
+                        <button class="action-btn-sm" onclick="switchUserRole()">
+                            <i class="fa-solid fa-right-from-bracket"></i> Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Dashboard View -->
+        <main class="main-content">
+            <!-- Top Header Strip -->
+            <header class="top-header">
+                <div class="search-container">
+                    <i class="fa-solid fa-magnifying-glass" style="color: var(--text-muted);"></i>
+                    <input type="text" placeholder="Search savings, loans, tools...">
+                    <span class="search-shortcut">Ctrl K</span>
+                </div>
+
+                <div class="news-ticker">
+                    <span class="ticker-badge">SACCO NEWS</span>
+                    <span class="ticker-text">Annual General Meeting set for August 30th — Q2 Dividends Approved!</span>
+                </div>
+
+                <div class="header-actions">
+                    <button class="btn btn-secondary" onclick="switchUserRole()">
+                        <i class="fa-solid fa-user-gear"></i> Switch User
+                    </button>
+                </div>
+            </header>
+
+            <!-- View 1: Dashboard View -->
+            <div id="dashboardView" class="view-section">
+                <!-- Welcome Greeting Card -->
+                <div class="welcome-card">
+                    <div>
+                        <h1 class="welcome-title">
+                            👋 Welcome back, <span id="welcomeUserName">Isabirye</span>
+                        </h1>
+                        <p class="welcome-subtitle">
+                            Member No. <strong style="color: #ffffff;">MB26071980</strong> • Joined 03 Jul 2026 • Status: <strong style="color: #10b981;">Active</strong>
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge-code" id="userReferralCode">REF-A1B2C3D4</span>
+                    </div>
+                </div>
+
+                <!-- Quick Action Pills -->
+                <div class="quick-actions-bar">
+                    <a href="#" class="action-pill" onclick="switchMainView('vaultsView')">
+                        <i class="fa-solid fa-vault" style="color: var(--accent-primary);"></i> Target Savings Vaults
+                    </a>
+                    <a href="#" class="action-pill">
+                        <i class="fa-solid fa-piggy-bank"></i> Savings Portal
+                    </a>
+                    <a href="#" class="action-pill">
+                        <i class="fa-solid fa-file-invoice-dollar"></i> Apply for Loan
+                    </a>
+                    <a href="#" class="action-pill">
+                        <i class="fa-solid fa-people-hold"></i> Table Banking
+                    </a>
+                </div>
+
+
+            <!-- Referral Link & Code Banner -->
+            <div class="referral-banner">
+                <div class="banner-header">
+                    <div>
+                        <h2 class="banner-title"><i class="fa-solid fa-gift" style="color: var(--accent-primary); margin-right: 8px;"></i> Share Your Referral Link</h2>
+                        <p class="banner-subtitle">Earn <strong>$10.00</strong> when a friend joins (Tier 1), and <strong>$5.00</strong> when their friends join (Tier 2)!</p>
+                    </div>
+                </div>
+
+                <div class="referral-input-group">
+                    <i class="fa-solid fa-link" style="color: var(--text-muted);"></i>
+                    <input type="text" id="referralLinkInput" readonly value="http://127.0.0.1:8000/dashboard?ref=REF-A1B2C3D4">
+                    <button class="btn btn-primary" onclick="copyReferralLink()">
+                        <i class="fa-solid fa-copy"></i> Copy Link
+                    </button>
+                </div>
+            </div>
+
+            <!-- 4 KPI Stat Cards -->
+            <div class="grid-4">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-title">Total Rewards Earned</span>
+                        <div class="stat-icon-wrapper icon-total">
+                            <i class="fa-solid fa-sack-dollar"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value" id="statTotalEarned">$15.00</div>
+                    <div class="stat-subtext"><i class="fa-solid fa-arrow-trend-up" style="color: #10b981;"></i> Multi-tier accumulated payout</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-title">Tier 1 Rewards ($10.00)</span>
+                        <div class="stat-icon-wrapper icon-tier1">
+                            <i class="fa-solid fa-user-plus"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value" id="statTier1Earned">$10.00</div>
+                    <div class="stat-subtext"><span id="statTier1Count">1</span> direct conversion(s)</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-title">Tier 2 Rewards ($5.00)</span>
+                        <div class="stat-icon-wrapper icon-tier2">
+                            <i class="fa-solid fa-users-rays"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value" id="statTier2Earned">$5.00</div>
+                    <div class="stat-subtext"><span id="statTier2Count">1</span> sub-invite conversion(s)</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-title">Total Network Size</span>
+                        <div class="stat-icon-wrapper icon-network">
+                            <i class="fa-solid fa-sitemap"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value" id="statNetworkSize">2</div>
+                    <div class="stat-subtext">Active referral tree members</div>
+                </div>
+            </div>
+
+            <!-- Live Demo & Webhook Simulator Grid -->
+            <div class="grid-2">
+                <!-- Registration Simulator -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="fa-solid fa-user-plus" style="color: var(--accent-primary);"></i> Simulate User Registration
+                        </div>
+                    </div>
+                    <div class="demo-panel">
+                        <form id="regForm" onsubmit="handleRegistrationSubmit(event)">
+                            <div class="form-group">
+                                <label>Invitee Full Name</label>
+                                <input type="text" id="regName" class="form-control" placeholder="e.g. User C" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Invitee Email</label>
+                                <input type="email" id="regEmail" class="form-control" placeholder="userC@example.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Referral Code (?ref=...)</label>
+                                <input type="text" id="regRefCode" class="form-control" placeholder="REF-A1B2C3D4">
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width: 100%;">
+                                <i class="fa-solid fa-paper-plane"></i> Register & Traversal Link (Tier 1 & Tier 2)
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Conversion Webhook Simulator -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="fa-solid fa-bolt" style="color: var(--tier1-color);"></i> Webhook Conversion Simulator
+                        </div>
+                    </div>
+                    <div class="demo-panel">
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;">
+                            Trigger a verified external payment event (<code>payment.success</code>). The API offloads processing asynchronously via <code>BackgroundTasks</code> to mark referral <strong>COMPLETED</strong> and issue Tier 1 ($10) & Tier 2 ($5) credits!
+                        </p>
+                        <div class="form-group">
+                            <label>Select User to Convert</label>
+                            <select id="conversionUserSelect" class="form-control">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Payment Amount ($)</label>
+                            <input type="number" id="webhookAmount" class="form-control" value="50.00" step="0.01">
+                        </div>
+                        <button class="btn btn-success" style="width: 100%;" onclick="triggerConversionWebhook()">
+                            <i class="fa-solid fa-circle-check"></i> Fire Webhook Event (Async Payout)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Referral Network Table -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fa-solid fa-table-list" style="color: var(--accent-primary);"></i> Referral Hierarchy & Network Logs
+                    </div>
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('all')">All Referrals</div>
+                        <div class="tab" onclick="switchTab('tier1')">Tier 1 (Direct)</div>
+                        <div class="tab" onclick="switchTab('tier2')">Tier 2 (Parent)</div>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Invitee</th>
+                                <th>Email</th>
+                                <th>Referrer</th>
+                                <th>Tier Level</th>
+                                <th>Reward Amount</th>
+                                <th>Status</th>
+                                <th>Created At</th>
+                            </tr>
+                        </thead>
+                        <tbody id="referralsTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                </div>
+            </div> <!-- End #dashboardView -->
+
+            <!-- View 2: Target Vaults & Fixed Deposits View -->
+            <div id="vaultsView" class="view-section hidden">
+                <div class="welcome-card" style="background: linear-gradient(135deg, rgba(14, 33, 26, 0.95) 0%, rgba(16, 185, 129, 0.15) 100%); margin-bottom: 24px;">
+                    <div>
+                        <h1 class="welcome-title">
+                            <i class="fa-solid fa-vault" style="color: var(--accent-primary);"></i> Target Savings Vaults & Fixed Deposits
+                        </h1>
+                        <p class="welcome-subtitle">
+                            Lock your funds, set goal milestones, and earn returns up to 8.5% p.a.
+                        </p>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="openCreateVaultModal()">
+                            <i class="fa-solid fa-plus-circle"></i> Create New Vault
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Vault Summary KPIs -->
+                <div class="grid-4">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Total Vault Balance</span>
+                            <div class="stat-icon-wrapper icon-total">
+                                <i class="fa-solid fa-vault"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultTotalBalance">UGX 0.00</div>
+                        <div class="stat-subtext"><i class="fa-solid fa-lock" style="color: #10b981;"></i> Locked active funds</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Active Vaults</span>
+                            <div class="stat-icon-wrapper icon-tier1">
+                                <i class="fa-solid fa-piggy-bank"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultActiveCount">0</div>
+                        <div class="stat-subtext">Ongoing target goals</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Completed Goals</span>
+                            <div class="stat-icon-wrapper icon-tier2">
+                                <i class="fa-solid fa-circle-check"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultMaturedCount">0</div>
+                        <div class="stat-subtext">Matured & goal met</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Total Target Amount</span>
+                            <div class="stat-icon-wrapper icon-network">
+                                <i class="fa-solid fa-bullseye"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultTotalTarget">UGX 0.00</div>
+                        <div class="stat-subtext">Combined savings goals</div>
+                    </div>
+                </div>
+
+                <!-- Active Vaults Cards Grid -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="fa-solid fa-boxes-stacked" style="color: var(--accent-primary);"></i> My Target Savings Vaults
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="fetchVaults()">
+                                <i class="fa-solid fa-rotate-right"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="vaultsCardsGrid" class="vault-grid">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div> <!-- End #vaultsView -->
+        </main>
+    </div>
+
+    <!-- Create Vault Modal -->
+    <div class="modal-overlay" id="createVaultModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-vault" style="color: var(--accent-primary);"></i> Create Target Savings Vault
+                </div>
+                <button class="modal-close" onclick="closeModal('createVaultModal')">&times;</button>
+            </div>
+            <form id="createVaultForm" onsubmit="handleCreateVaultSubmit(event)">
+                <div class="form-group">
+                    <label>Vault Goal Name</label>
+                    <input type="text" id="vaultNameInput" class="form-control" placeholder="e.g. Land Purchase, Emergency Savings" required>
+                </div>
+                <div class="form-group">
+                    <label>Vault Type</label>
+                    <select id="vaultTypeInput" class="form-control">
+                        <option value="GOAL">Target Goal Savings</option>
+                        <option value="FIXED_DEPOSIT">Fixed Deposit Account</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Target Amount (UGX)</label>
+                    <input type="number" id="vaultTargetInput" class="form-control" placeholder="5000000" step="10000" min="50000" required>
+                </div>
+                <div class="grid-2" style="margin-bottom: 0;">
+                    <div class="form-group">
+                        <label>Lock Period (Months)</label>
+                        <select id="vaultLockInput" class="form-control">
+                            <option value="3">3 Months</option>
+                            <option value="6" selected>6 Months</option>
+                            <option value="12">12 Months</option>
+                            <option value="24">24 Months</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Annual Interest Rate (%)</label>
+                        <input type="number" id="vaultRateInput" class="form-control" value="6.50" step="0.1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Early Withdrawal Penalty (%)</label>
+                    <input type="number" id="vaultPenaltyInput" class="form-control" value="2.50" step="0.1">
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('createVaultModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Create Vault</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Deposit Vault Modal -->
+    <div class="modal-overlay" id="depositVaultModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-piggy-bank" style="color: #10b981;"></i> Deposit into Vault
+                </div>
+                <button class="modal-close" onclick="closeModal('depositVaultModal')">&times;</button>
+            </div>
+            <form id="depositVaultForm" onsubmit="handleDepositSubmit(event)">
+                <input type="hidden" id="depositVaultId">
+                <div class="form-group">
+                    <label>Vault Account</label>
+                    <input type="text" id="depositVaultName" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Deposit Amount (UGX)</label>
+                    <input type="number" id="depositAmountInput" class="form-control" placeholder="100000" step="5000" min="1000" required>
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('depositVaultModal')">Cancel</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1;">Confirm Deposit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Withdraw / Break Vault Modal -->
+    <div class="modal-overlay" id="withdrawVaultModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-hand-holding-dollar" style="color: #ef4444;"></i> Withdraw / Break Vault
+                </div>
+                <button class="modal-close" onclick="closeModal('withdrawVaultModal')">&times;</button>
+            </div>
+            <form id="withdrawVaultForm" onsubmit="handleWithdrawSubmit(event)">
+                <input type="hidden" id="withdrawVaultId">
+                <input type="hidden" id="withdrawIsLocked">
+                <div class="form-group">
+                    <label>Vault Name</label>
+                    <input type="text" id="withdrawVaultName" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Current Vault Balance (UGX)</label>
+                    <input type="text" id="withdrawCurrentBalance" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Withdrawal Amount (UGX)</label>
+                    <input type="number" id="withdrawAmountInput" class="form-control" placeholder="Leave empty for full balance" step="1000">
+                </div>
+                <div id="earlyBreakWarning" class="demo-panel" style="background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3); margin-bottom: 16px; display: none;">
+                    <p style="font-size: 0.85rem; color: #fca5a5;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> <strong>Early Break Warning:</strong> This vault is locked until maturity. Early withdrawal incurs a <strong>2.50% penalty</strong> on the withdrawn amount.
+                    </p>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.825rem; color: #ffffff; margin-top: 8px; cursor: pointer;">
+                        <input type="checkbox" id="forceEarlyCheck"> I accept early withdrawal penalty
+                    </label>
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('withdrawVaultModal')">Cancel</button>
+                    <button type="submit" class="btn btn-danger" style="flex: 1;">Withdraw Funds</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notifications container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+
+    <script>
+        // State simulation
+        let currentUser = {
+            id: "user-a-id",
+            name: "Isabirye Alex",
+            email: "isabirye@example.com",
+            code: "REF-A1B2C3D4"
+        };
+
+        let referralsData = [
+            {
+                id: "ref-1",
+                referred_name: "User B",
+                referred_email: "userB@example.com",
+                referrer_name: "Isabirye Alex",
+                tier: 1,
+                reward: "$10.00",
+                status: "COMPLETED",
+                created_at: new Date(Date.now() - 3600000 * 24).toLocaleString()
+            },
+            {
+                id: "ref-2",
+                referred_name: "User C",
+                referred_email: "userC@example.com",
+                referrer_name: "Isabirye Alex",
+                tier: 2,
+                reward: "$5.00",
+                status: "COMPLETED",
+                created_at: new Date(Date.now() - 3600000 * 12).toLocaleString()
+            },
+            {
+                id: "ref-3",
+                referred_name: "User D",
+                referred_email: "userD@example.com",
+                referrer_name: "User B",
+                tier: 1,
+                reward: "$10.00",
+                status: "PENDING",
+                created_at: new Date().toLocaleString()
+            }
+        ];
+
+        let currentTabFilter = "all";
+
+        document.addEventListener("DOMContentLoaded", () => {
+            // Check query params for ?ref=...
+            const urlParams = new URLSearchParams(window.location.search);
+            const refParam = urlParams.get("ref");
+            if (refParam) {
+                document.getElementById("regRefCode").value = refParam;
+                showToast(`Referral code '${refParam}' detected from URL!`, "info");
+            } else {
+                document.getElementById("regRefCode").value = currentUser.code;
+            }
+
+            renderDashboard();
+        });
+
+        function renderDashboard() {
+            // Update Referral Link
+            document.getElementById("userReferralCode").innerText = currentUser.code;
+            const baseUrl = window.location.origin;
+            document.getElementById("referralLinkInput").value = `${baseUrl}/dashboard?ref=${currentUser.code}`;
+
+            // Calculate KPIs
+            let totalEarned = 0;
+            let tier1Earned = 0;
+            let tier1Count = 0;
+            let tier2Earned = 0;
+            let tier2Count = 0;
+
+            referralsData.forEach(r => {
+                if (r.status === "COMPLETED") {
+                    if (r.tier === 1) {
+                        tier1Earned += 10.00;
+                        tier1Count++;
+                    } else if (r.tier === 2) {
+                        tier2Earned += 5.00;
+                        tier2Count++;
+                    }
+                }
+            });
+
+            totalEarned = tier1Earned + tier2Earned;
+
+            document.getElementById("statTotalEarned").innerText = `$${totalEarned.toFixed(2)}`;
+            document.getElementById("statTier1Earned").innerText = `$${tier1Earned.toFixed(2)}`;
+            document.getElementById("statTier1Count").innerText = tier1Count;
+            document.getElementById("statTier2Earned").innerText = `$${tier2Earned.toFixed(2)}`;
+            document.getElementById("statTier2Count").innerText = tier2Count;
+            document.getElementById("statNetworkSize").innerText = referralsData.length;
+
+            // Render Table & Selects
+            renderTable();
+            renderConversionSelect();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById("referralsTableBody");
+            tbody.innerHTML = "";
+
+            let filtered = referralsData;
+            if (currentTabFilter === "tier1") filtered = referralsData.filter(r => r.tier === 1);
+            if (currentTabFilter === "tier2") filtered = referralsData.filter(r => r.tier === 2);
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <div class="empty-icon"><i class="fa-solid fa-folder-open"></i></div>
+                            <div>No referral records found for this tier filter.</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filtered.forEach(r => {
+                const tr = document.createElement("tr");
+                const isPending = r.status === "PENDING";
+                tr.innerHTML = `
+                    <td><strong>${r.referred_name}</strong></td>
+                    <td>${r.referred_email}</td>
+                    <td>${r.referrer_name}</td>
+                    <td><span class="tier-badge ${r.tier === 1 ? 'tier-1' : 'tier-2'}">Tier ${r.tier}</span></td>
+                    <td><strong style="color: ${r.tier === 1 ? '#10b981' : '#3b82f6'};">${r.reward}</strong></td>
+                    <td>
+                        <span class="status-badge ${isPending ? 'status-pending' : 'status-completed'}">
+                            <i class="fa-solid ${isPending ? 'fa-clock' : 'fa-check-circle'}"></i>
+                            ${r.status}
+                        </span>
+                    </td>
+                    <td>${r.created_at}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderConversionSelect() {
+            const select = document.getElementById("conversionUserSelect");
+            select.innerHTML = "";
+            const pendingList = referralsData.filter(r => r.status === "PENDING");
+
+            if (pendingList.length === 0) {
+                select.innerHTML = `<option value="">No pending users to convert</option>`;
+                return;
+            }
+
+            pendingList.forEach(r => {
+                const opt = document.createElement("option");
+                opt.value = r.id;
+                opt.innerText = `${r.referred_name} (${r.referred_email}) - Tier ${r.tier} (${r.reward})`;
+                select.appendChild(opt);
+            });
+        }
+
+        function switchTab(tab) {
+            currentTabFilter = tab;
+            document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+            event.target.classList.add("active");
+            renderTable();
+        }
+
+        function setActiveNav(element) {
+            document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+            element.classList.add("active");
+        }
+
+        function copyReferralLink() {
+            const linkInput = document.getElementById("referralLinkInput");
+            navigator.clipboard.writeText(linkInput.value);
+            showToast("Referral link copied to clipboard!", "success");
+        }
+
+        async function handleRegistrationSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById("regName").value;
+            const email = document.getElementById("regEmail").value;
+            const refCode = document.getElementById("regRefCode").value.trim().toUpperCase();
+
+            if (refCode === currentUser.code && currentUser.email === email) {
+                showToast("Self-referral is not allowed (HTTP 400 rejection).", "error");
+                return;
+            }
+
+            // Try real API call to FastAPI backend
+            try {
+                const res = await fetch("/api/v1/auth/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        email: email,
+                        full_name: name,
+                        password: "Password123!",
+                        ref: refCode || undefined
+                    })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    showToast(`API: Registered '${name}' with code ${data.referral_code || 'generated'}!`, "success");
+                }
+            } catch (err) {
+                console.log("Using simulated fallback registration", err);
+            }
+
+            // Simulate multi-tier link creation
+            const newRefTier1 = {
+                id: `ref-${Date.now()}-1`,
+                referred_name: name,
+                referred_email: email,
+                referrer_name: "Isabirye Alex",
+                tier: 1,
+                reward: "$10.00",
+                status: "PENDING",
+                created_at: new Date().toLocaleString()
+            };
+
+            const newRefTier2 = {
+                id: `ref-${Date.now()}-2`,
+                referred_name: name,
+                referred_email: email,
+                referrer_name: "Parent User (Isabirye)",
+                tier: 2,
+                reward: "$5.00",
+                status: "PENDING",
+                created_at: new Date().toLocaleString()
+            };
+
+            referralsData.unshift(newRefTier1, newRefTier2);
+            renderDashboard();
+            showToast(`User '${name}' registered! Tier 1 & Tier 2 pending links created.`, "success");
+
+            document.getElementById("regName").value = "";
+            document.getElementById("regEmail").value = "";
+        }
+
+        async function triggerConversionWebhook() {
+            const select = document.getElementById("conversionUserSelect");
+            const refId = select.value;
+            if (!refId) {
+                showToast("No pending user selected for conversion.", "error");
+                return;
+            }
+
+            const refItem = referralsData.find(r => r.id === refId);
+            if (refItem) {
+                try {
+                    await fetch("/api/v1/referrals/webhook", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            event_type: "payment.success",
+                            user_id: refItem.id,
+                            amount_paid: 50.00
+                        })
+                    });
+                } catch (e) {}
+
+                refItem.status = "COMPLETED";
+                renderDashboard();
+                showToast(`Webhook event 'payment.success' processed! ${refItem.reward} credited to ${refItem.referrer_name}.`, "success");
+            }
+        }
+
+        function toggleDarkMode() {
+            showToast("Dark Mode is active.", "info");
+        }
+
+        function switchUserRole() {
+            showToast("Switched user context cleanly.", "info");
+        }
+
+        function showToast(message, type = "info") {
+            const container = document.getElementById("toastContainer");
+            const toast = document.createElement("div");
+            toast.className = "toast";
+
+            let icon = "fa-circle-info";
+            if (type === "success") icon = "fa-circle-check";
+            if (type === "error") icon = "fa-circle-xmark";
+
+            toast.innerHTML = `<i class="fa-solid ${icon}" style="color: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#f59e0b'}; font-size: 1.2rem;"></i> <span>${message}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3500);
+        }
+
+        // ---------------------------------------------------------------------------
+        // Target Vaults Navigation & API Interaction
+        // ---------------------------------------------------------------------------
+        let vaultsList = [
+            {
+                id: "vlt-demo-1",
+                account_number: "VLT-83920145",
+                member_id: "MB26071980",
+                name: "Land Purchase Vault",
+                vault_type: "GOAL",
+                target_amount: 10000000.00,
+                current_balance: 6500000.00,
+                interest_rate_annual: 6.50,
+                early_withdrawal_penalty_pct: 2.50,
+                lock_period_months: 12,
+                start_date: "2026-01-15",
+                maturity_date: "2027-01-15",
+                is_locked: true,
+                status: "ACTIVE"
+            },
+            {
+                id: "vlt-demo-2",
+                account_number: "VLT-47219034",
+                member_id: "MB26071980",
+                name: "Emergency Fund",
+                vault_type: "FIXED_DEPOSIT",
+                target_amount: 3000000.00,
+                current_balance: 3000000.00,
+                interest_rate_annual: 8.00,
+                early_withdrawal_penalty_pct: 3.00,
+                lock_period_months: 6,
+                start_date: "2026-02-01",
+                maturity_date: "2026-08-01",
+                is_locked: false,
+                status: "MATURED"
+            }
+        ];
+
+        function switchMainView(viewId, element) {
+            document.querySelectorAll(".view-section").forEach(sec => sec.classList.add("hidden"));
+            const targetView = document.getElementById(viewId);
+            if (targetView) targetView.classList.remove("hidden");
+
+            if (element) {
+                setActiveNav(element);
+            }
+
+            if (viewId === "vaultsView") {
+                fetchVaults();
+            }
+        }
+
+        async function fetchVaults() {
+            try {
+                const res = await fetch("/api/v1/vaults");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        vaultsList = data;
+                    }
+                }
+            } catch (err) {
+                console.log("Using active vaults list context", err);
+            }
+            renderVaultsCards();
+        }
+
+        function renderVaultsCards() {
+            const grid = document.getElementById("vaultsCardsGrid");
+            grid.innerHTML = "";
+
+            let totalBal = 0;
+            let totalTarget = 0;
+            let activeCnt = 0;
+            let maturedCnt = 0;
+
+            if (vaultsList.length === 0) {
+                grid.innerHTML = `
+                    <div style="grid-column: 1 / -1;" class="empty-state">
+                        <div class="empty-icon"><i class="fa-solid fa-vault"></i></div>
+                        <div>No target vaults created yet. Click 'Create New Vault' to get started!</div>
+                    </div>
+                `;
+            } else {
+                vaultsList.forEach(v => {
+                    const bal = parseFloat(v.current_balance || 0);
+                    const target = parseFloat(v.target_amount || 1);
+                    const pct = Math.min(100, Math.round((bal / target) * 100));
+
+                    totalBal += bal;
+                    totalTarget += target;
+                    if (v.status === "ACTIVE") activeCnt++;
+                    if (v.status === "MATURED") maturedCnt++;
+
+                    const isMatured = v.status === "MATURED";
+                    const isBroken = v.status === "BROKEN";
+
+                    const card = document.createElement("div");
+                    card.className = "vault-card";
+                    card.innerHTML = `
+                        <div class="vault-header">
+                            <div class="vault-title-group">
+                                <div class="vault-icon-box">
+                                    <i class="fa-solid ${v.vault_type === 'FIXED_DEPOSIT' ? 'fa-lock' : 'fa-bullseye'}"></i>
+                                </div>
+                                <div>
+                                    <div class="vault-name">${v.name}</div>
+                                    <div class="vault-account">${v.account_number} • ${v.vault_type}</div>
+                                </div>
+                            </div>
+                            <span class="status-badge ${isMatured ? 'status-completed' : isBroken ? 'status-pending' : 'status-completed'}" style="${isBroken ? 'background: rgba(239,68,68,0.15); color: #fca5a5;' : ''}">
+                                <i class="fa-solid ${isMatured ? 'fa-circle-check' : isBroken ? 'fa-triangle-exclamation' : 'fa-lock'}"></i>
+                                ${v.status}
+                            </span>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.825rem; font-weight: 600;">
+                                <span style="color: var(--text-secondary);">Savings Goal Progress</span>
+                                <span style="color: #fbbf24;">${pct}% (${bal.toLocaleString()} / ${target.toLocaleString()} UGX)</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" style="width: ${pct}%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="vault-metrics">
+                            <div class="metric-item">
+                                <span class="metric-label">Yield Rate</span>
+                                <span class="metric-value" style="color: #10b981;">${v.interest_rate_annual}% p.a.</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">Lock Period</span>
+                                <span class="metric-value">${v.lock_period_months} Months</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">Maturity Date</span>
+                                <span class="metric-value">${v.maturity_date || 'N/A'}</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">Early Penalty</span>
+                                <span class="metric-value" style="color: #ef4444;">${v.early_withdrawal_penalty_pct}%</span>
+                            </div>
+                        </div>
+
+                        <div class="vault-actions">
+                            <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="openDepositModal('${v.id}')" ${v.status !== 'ACTIVE' ? 'disabled' : ''}>
+                                <i class="fa-solid fa-plus-circle"></i> Deposit
+                            </button>
+                            <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="openWithdrawModal('${v.id}', ${v.is_locked})">
+                                <i class="fa-solid fa-arrow-up-from-bracket"></i> Withdraw
+                            </button>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            }
+
+            document.getElementById("vaultTotalBalance").innerText = `UGX ${totalBal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById("vaultTotalTarget").innerText = `UGX ${totalTarget.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById("vaultActiveCount").innerText = activeCnt;
+            document.getElementById("vaultMaturedCount").innerText = maturedCnt;
+        }
+
+        function openCreateVaultModal() {
+            document.getElementById("createVaultModal").classList.add("active");
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove("active");
+        }
+
+        async function handleCreateVaultSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById("vaultNameInput").value;
+            const type = document.getElementById("vaultTypeInput").value;
+            const target = parseFloat(document.getElementById("vaultTargetInput").value);
+            const months = parseInt(document.getElementById("vaultLockInput").value);
+            const rate = parseFloat(document.getElementById("vaultRateInput").value);
+            const penalty = parseFloat(document.getElementById("vaultPenaltyInput").value);
+
+            const payload = {
+                member_id: currentUser.id || "MB26071980",
+                name: name,
+                vault_type: type,
+                target_amount: target,
+                lock_period_months: months,
+                interest_rate_annual: rate,
+                early_withdrawal_penalty_pct: penalty
+            };
+
+            let createdVault = null;
+            try {
+                const res = await fetch("/api/v1/vaults", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    createdVault = await res.json();
+                }
+            } catch (err) {
+                console.log("Using fallback local vault creation", err);
+            }
+
+            if (!createdVault) {
+                const today = new Date();
+                const maturity = new Date(today.setMonth(today.getMonth() + months)).toISOString().split('T')[0];
+                createdVault = {
+                    id: `vlt-${Date.now()}`,
+                    account_number: `VLT-${Math.floor(10000000 + Math.random() * 90000000)}`,
+                    member_id: currentUser.id,
+                    name: name,
+                    vault_type: type,
+                    target_amount: target,
+                    current_balance: 0.00,
+                    interest_rate_annual: rate,
+                    early_withdrawal_penalty_pct: penalty,
+                    lock_period_months: months,
+                    start_date: new Date().toISOString().split('T')[0],
+                    maturity_date: maturity,
+                    is_locked: true,
+                    status: "ACTIVE"
+                };
+            }
+
+            vaultsList.unshift(createdVault);
+            closeModal("createVaultModal");
+            renderVaultsCards();
+            showToast(`Created target vault '${name}' (Lock: ${months} Months)!`, "success");
+            document.getElementById("createVaultForm").reset();
+        }
+
+        function openDepositModal(vaultId) {
+            const v = vaultsList.find(item => item.id === vaultId);
+            if (!v) return;
+            document.getElementById("depositVaultId").value = v.id;
+            document.getElementById("depositVaultName").value = `${v.name} (${v.account_number})`;
+            document.getElementById("depositVaultModal").classList.add("active");
+        }
+
+        async function handleDepositSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById("depositVaultId").value;
+            const amt = parseFloat(document.getElementById("depositAmountInput").value);
+            const v = vaultsList.find(item => item.id === id);
+
+            if (!v) return;
+
+            try {
+                await fetch(`/api/v1/vaults/${id}/deposit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ amount: amt })
+                });
+            } catch (e) {}
+
+            v.current_balance = parseFloat(v.current_balance || 0) + amt;
+            if (v.current_balance >= v.target_amount) {
+                v.status = "MATURED";
+                v.is_locked = false;
+            }
+
+            closeModal("depositVaultModal");
+            renderVaultsCards();
+            showToast(`Deposited UGX ${amt.toLocaleString()} into vault '${v.name}'!`, "success");
+            document.getElementById("depositVaultForm").reset();
+        }
+
+        function openWithdrawModal(vaultId, isLocked) {
+            const v = vaultsList.find(item => item.id === vaultId);
+            if (!v) return;
+            document.getElementById("withdrawVaultId").value = v.id;
+            document.getElementById("withdrawIsLocked").value = v.is_locked ? "true" : "false";
+            document.getElementById("withdrawVaultName").value = `${v.name} (${v.account_number})`;
+            document.getElementById("withdrawCurrentBalance").value = `UGX ${parseFloat(v.current_balance || 0).toLocaleString()}`;
+            
+            const warningEl = document.getElementById("earlyBreakWarning");
+            if (v.is_locked && v.status === "ACTIVE") {
+                warningEl.style.display = "block";
+            } else {
+                warningEl.style.display = "none";
+            }
+
+            document.getElementById("withdrawVaultModal").classList.add("active");
+        }
+
+        async function handleWithdrawSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById("withdrawVaultId").value;
+            const v = vaultsList.find(item => item.id === id);
+            if (!v) return;
+
+            const isLocked = v.is_locked && v.status === "ACTIVE";
+            const forceEarly = document.getElementById("forceEarlyCheck").checked;
+            const rawAmt = document.getElementById("withdrawAmountInput").value;
+            const withdrawAmt = rawAmt ? parseFloat(rawAmt) : parseFloat(v.current_balance);
+
+            if (isLocked && !forceEarly) {
+                showToast("Please check the early break penalty confirmation box.", "error");
+                return;
+            }
+
+            try {
+                await fetch(`/api/v1/vaults/${id}/withdraw`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        amount: withdrawAmt,
+                        force_early_withdrawal: forceEarly
+                    })
+                });
+            } catch (e) {}
+
+            let penaltyAmt = 0;
+            if (isLocked) {
+                penaltyAmt = withdrawAmt * (v.early_withdrawal_penalty_pct / 100);
+                v.status = "BROKEN";
+            }
+
+            v.current_balance = Math.max(0, parseFloat(v.current_balance || 0) - withdrawAmt);
+            if (v.current_balance === 0 && v.status !== "BROKEN") {
+                v.status = "MATURED";
+            }
+
+            closeModal("withdrawVaultModal");
+            renderVaultsCards();
+            showToast(`Withdrew UGX ${withdrawAmt.toLocaleString()}${penaltyAmt > 0 ? ` (Penalty: UGX ${penaltyAmt.toLocaleString()})` : ''}`, "success");
+            document.getElementById("withdrawVaultForm").reset();
+        }
+    </script>
+</body>
+</html>
+

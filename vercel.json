@@ -1,22 +1,22 @@
 {
   "version": 2,
-  "builds": [
+  "cleanUrls": true,
+  "rewrites": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "includeFiles": "static/**"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/static/(.*)",
-      "dest": "/static/$1"
+      "source": "/register",
+      "destination": "/public/register.html"
     },
     {
-      "src": "/(.*)",
-      "dest": "api/index.py"
+      "source": "/dashboard",
+      "destination": "/public/dashboard.html"
+    },
+    {
+      "source": "/",
+      "destination": "/public/index.html"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
     }
   ]
 }
