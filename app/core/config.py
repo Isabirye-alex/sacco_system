@@ -12,12 +12,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Database
-    DATABASE_URL: str 
-    ONLINE_DATABASE_URL: str
+    DATABASE_URL: str = "sqlite:///./sacco.db"
+    ONLINE_DATABASE_URL: str = "sqlite:///./sacco.db"
 
     # Security
-    SECRET_KEY: str 
+    SECRET_KEY: str = "default-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
@@ -48,7 +49,8 @@ class Settings(BaseSettings):
 
 
     # Used in SMS message templates, e.g. "- Kampala SACCO"
-    SACCO_NAME: str
+    SACCO_NAME: str = "SACCO Management System"
+
 
 
 

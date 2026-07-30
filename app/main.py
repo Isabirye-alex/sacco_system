@@ -187,15 +187,22 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
 
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+DASHBOARD_HTML = os.path.join(STATIC_DIR, "dashboard.html")
+
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/", tags=["Dashboard"])
 @app.get("/register", tags=["Dashboard"])
 @app.get("/dashboard", tags=["Dashboard"])
 def referral_dashboard():
+    if os.path.exists(DASHBOARD_HTML):
+        return FileResponse(DASHBOARD_HTML)
     return FileResponse("static/dashboard.html")
+
 
 
 @app.get("/health", tags=["Health"])
