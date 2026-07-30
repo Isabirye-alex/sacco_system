@@ -191,6 +191,8 @@ if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+@app.get("/", tags=["Dashboard"])
+@app.get("/register", tags=["Dashboard"])
 @app.get("/dashboard", tags=["Dashboard"])
 def referral_dashboard():
     return FileResponse("static/dashboard.html")
@@ -199,6 +201,7 @@ def referral_dashboard():
 @app.get("/health", tags=["Health"])
 def health_check():
     return {"status": "ok"}
+
 
 
 # ---------------------------------------------------------------------------

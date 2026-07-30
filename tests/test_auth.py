@@ -54,3 +54,10 @@ def test_refresh_token_flow(client):
     response = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
     assert response.status_code == 200
     assert "access_token" in response.json()
+
+
+def test_register_page_route(client):
+    response = client.get("/register?ref=04571064")
+    assert response.status_code == 200
+    assert "SACCO Management System Dashboard" in response.text
+
