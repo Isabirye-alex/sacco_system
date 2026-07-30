@@ -32,6 +32,7 @@ from app.routers import (
     risk_compliance,
     savings,
     shares,
+    vaults,
 )
 
 from app.services.loan_penalty_service import apply_overdue_penalties
@@ -90,51 +91,12 @@ def _run_interest_posting_job():
         db.close()
 
 
-def _sync_schema_columns():
-    from sqlalchemy import text
-    statements = [
-        "ALTER TABLE members ADD COLUMN IF NOT EXISTS dormancy_notified_stage INT DEFAULT 0;",
-        "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS is_released BOOLEAN DEFAULT FALSE;",
-        "ALTER TABLE collaterals ADD COLUMN IF NOT EXISTS released_at TIMESTAMP;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(16);",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64);",
-        "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS referrer_id VARCHAR(36);",
-        "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS referred_user_id VARCHAR(36);",
-        "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS tier INT DEFAULT 1;",
-    ]
-    with engine.connect() as conn:
-        for stmt in statements:
-            try:
-                conn.execute(text(stmt))
-                conn.commit()
-                logger.info("Successfully executed schema DDL: %s", stmt)
-            except Exception as exc:
-                logger.error("Error executing schema DDL '%s': %s", stmt, exc)
-
-
 # ---------------------------------------------------------------------------
 # Modern Lifespan Handler (Replaces @app.on_event)
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- STARTUP LOGIC ---
-    if settings.ENVIRONMENT != "testing":
-        try:
-            Base.metadata.create_all(bind=engine)
-            _sync_schema_columns()
-        except Exception as ex:
-            logger.error("Database table initialization error: %s", ex)
-
-        try:
-            from alembic.config import Config
-            from alembic import command
-            alembic_cfg = Config("alembic.ini")
-            command.upgrade(alembic_cfg, "head")
-            logger.info("Alembic database migrations applied to head successfully.")
-        except Exception as e:
-            logger.warning("Alembic auto-upgrade fallback notice: %s", e)
-
+    # Background jobs scheduler startup
     try:
         scheduler.add_job(  # type: ignore[arg-type]
             _run_dormancy_sweep_job,
@@ -150,10 +112,6 @@ async def lifespan(app: FastAPI):
             id="loan_penalties",
             replace_existing=True,
         )
-        # Interest posting is idempotent per-calendar-month (see
-        # savings_interest_service.py), so a simple daily check is safe - it
-        # only actually posts anything on accounts that haven't been posted
-        # yet this month, regardless of which day of the month this runs.
         scheduler.add_job(
             _run_interest_posting_job,
             "interval",
@@ -223,6 +181,8 @@ app.include_router(reports.router)
 app.include_router(risk_compliance.router)
 app.include_router(referrals.router)
 app.include_router(hr_payroll.router)
+app.include_router(vaults.router)
+
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os

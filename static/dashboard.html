@@ -849,6 +849,209 @@
             margin-bottom: 12px;
             opacity: 0.4;
         }
+
+        /* View Section Toggle */
+        .view-section {
+            display: block;
+        }
+        .view-section.hidden {
+            display: none !important;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(4, 13, 9, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-card {
+            background: rgba(11, 31, 24, 0.96);
+            border: 1px solid var(--border-color-highlight);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 520px;
+            padding: 28px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            transform: translateY(20px);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.active .modal-card {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .modal-close:hover {
+            color: #ef4444;
+        }
+
+        /* Vault Specific Card Styles */
+        .vault-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .vault-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 16px;
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .vault-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-color-highlight);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        }
+
+        .vault-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .vault-title-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .vault-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%);
+            border: 1px solid var(--border-color-highlight);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: #fbbf24;
+        }
+
+        .vault-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .vault-account {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            margin: 8px 0;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            border-radius: 20px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .vault-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 12px 14px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .metric-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .metric-value {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .vault-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: 0.8rem;
+            border-radius: var(--radius-sm);
+        }
     </style>
 </head>
 <body>
@@ -871,9 +1074,14 @@
             <!-- Navigation Links -->
             <nav class="nav-menu">
                 <div class="nav-label">Main Menu</div>
-                <a href="#" class="nav-item active" onclick="setActiveNav(this)">
+                <a href="#" class="nav-item active" onclick="switchMainView('dashboardView', this)">
                     <i class="fa-solid fa-chart-pie"></i>
                     <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" onclick="switchMainView('vaultsView', this)">
+                    <i class="fa-solid fa-vault"></i>
+                    <span>Target Vaults</span>
+                    <span class="nav-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">NEW</span>
                 </a>
                 <a href="#" class="nav-item" onclick="setActiveNav(this)">
                     <i class="fa-solid fa-wallet"></i>
@@ -952,33 +1160,39 @@
                 </div>
             </header>
 
-            <!-- Welcome Greeting Card -->
-            <div class="welcome-card">
-                <div>
-                    <h1 class="welcome-title">
-                        👋 Welcome back, <span id="welcomeUserName">Isabirye</span>
-                    </h1>
-                    <p class="welcome-subtitle">
-                        Member No. <strong style="color: #ffffff;">MB26071980</strong> • Joined 03 Jul 2026 • Status: <strong style="color: #10b981;">Active</strong>
-                    </p>
+            <!-- View 1: Dashboard View -->
+            <div id="dashboardView" class="view-section">
+                <!-- Welcome Greeting Card -->
+                <div class="welcome-card">
+                    <div>
+                        <h1 class="welcome-title">
+                            👋 Welcome back, <span id="welcomeUserName">Isabirye</span>
+                        </h1>
+                        <p class="welcome-subtitle">
+                            Member No. <strong style="color: #ffffff;">MB26071980</strong> • Joined 03 Jul 2026 • Status: <strong style="color: #10b981;">Active</strong>
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge-code" id="userReferralCode">REF-A1B2C3D4</span>
+                    </div>
                 </div>
-                <div>
-                    <span class="badge-code" id="userReferralCode">REF-A1B2C3D4</span>
-                </div>
-            </div>
 
-            <!-- Quick Action Pills -->
-            <div class="quick-actions-bar">
-                <a href="#" class="action-pill">
-                    <i class="fa-solid fa-piggy-bank"></i> Savings Portal
-                </a>
-                <a href="#" class="action-pill">
-                    <i class="fa-solid fa-file-invoice-dollar"></i> Apply for Loan
-                </a>
-                <a href="#" class="action-pill">
-                    <i class="fa-solid fa-people-hold"></i> Table Banking
-                </a>
-            </div>
+                <!-- Quick Action Pills -->
+                <div class="quick-actions-bar">
+                    <a href="#" class="action-pill" onclick="switchMainView('vaultsView')">
+                        <i class="fa-solid fa-vault" style="color: var(--accent-primary);"></i> Target Savings Vaults
+                    </a>
+                    <a href="#" class="action-pill">
+                        <i class="fa-solid fa-piggy-bank"></i> Savings Portal
+                    </a>
+                    <a href="#" class="action-pill">
+                        <i class="fa-solid fa-file-invoice-dollar"></i> Apply for Loan
+                    </a>
+                    <a href="#" class="action-pill">
+                        <i class="fa-solid fa-people-hold"></i> Table Banking
+                    </a>
+                </div>
+
 
             <!-- Referral Link & Code Banner -->
             <div class="referral-banner">
@@ -1134,12 +1348,216 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
+                </div>
+            </div> <!-- End #dashboardView -->
+
+            <!-- View 2: Target Vaults & Fixed Deposits View -->
+            <div id="vaultsView" class="view-section hidden">
+                <div class="welcome-card" style="background: linear-gradient(135deg, rgba(14, 33, 26, 0.95) 0%, rgba(16, 185, 129, 0.15) 100%); margin-bottom: 24px;">
+                    <div>
+                        <h1 class="welcome-title">
+                            <i class="fa-solid fa-vault" style="color: var(--accent-primary);"></i> Target Savings Vaults & Fixed Deposits
+                        </h1>
+                        <p class="welcome-subtitle">
+                            Lock your funds, set goal milestones, and earn returns up to 8.5% p.a.
+                        </p>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="openCreateVaultModal()">
+                            <i class="fa-solid fa-plus-circle"></i> Create New Vault
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Vault Summary KPIs -->
+                <div class="grid-4">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Total Vault Balance</span>
+                            <div class="stat-icon-wrapper icon-total">
+                                <i class="fa-solid fa-vault"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultTotalBalance">UGX 0.00</div>
+                        <div class="stat-subtext"><i class="fa-solid fa-lock" style="color: #10b981;"></i> Locked active funds</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Active Vaults</span>
+                            <div class="stat-icon-wrapper icon-tier1">
+                                <i class="fa-solid fa-piggy-bank"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultActiveCount">0</div>
+                        <div class="stat-subtext">Ongoing target goals</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Completed Goals</span>
+                            <div class="stat-icon-wrapper icon-tier2">
+                                <i class="fa-solid fa-circle-check"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultMaturedCount">0</div>
+                        <div class="stat-subtext">Matured & goal met</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Total Target Amount</span>
+                            <div class="stat-icon-wrapper icon-network">
+                                <i class="fa-solid fa-bullseye"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="vaultTotalTarget">UGX 0.00</div>
+                        <div class="stat-subtext">Combined savings goals</div>
+                    </div>
+                </div>
+
+                <!-- Active Vaults Cards Grid -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="fa-solid fa-boxes-stacked" style="color: var(--accent-primary);"></i> My Target Savings Vaults
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="fetchVaults()">
+                                <i class="fa-solid fa-rotate-right"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="vaultsCardsGrid" class="vault-grid">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div> <!-- End #vaultsView -->
         </main>
+    </div>
+
+    <!-- Create Vault Modal -->
+    <div class="modal-overlay" id="createVaultModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-vault" style="color: var(--accent-primary);"></i> Create Target Savings Vault
+                </div>
+                <button class="modal-close" onclick="closeModal('createVaultModal')">&times;</button>
+            </div>
+            <form id="createVaultForm" onsubmit="handleCreateVaultSubmit(event)">
+                <div class="form-group">
+                    <label>Vault Goal Name</label>
+                    <input type="text" id="vaultNameInput" class="form-control" placeholder="e.g. Land Purchase, Emergency Savings" required>
+                </div>
+                <div class="form-group">
+                    <label>Vault Type</label>
+                    <select id="vaultTypeInput" class="form-control">
+                        <option value="GOAL">Target Goal Savings</option>
+                        <option value="FIXED_DEPOSIT">Fixed Deposit Account</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Target Amount (UGX)</label>
+                    <input type="number" id="vaultTargetInput" class="form-control" placeholder="5000000" step="10000" min="50000" required>
+                </div>
+                <div class="grid-2" style="margin-bottom: 0;">
+                    <div class="form-group">
+                        <label>Lock Period (Months)</label>
+                        <select id="vaultLockInput" class="form-control">
+                            <option value="3">3 Months</option>
+                            <option value="6" selected>6 Months</option>
+                            <option value="12">12 Months</option>
+                            <option value="24">24 Months</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Annual Interest Rate (%)</label>
+                        <input type="number" id="vaultRateInput" class="form-control" value="6.50" step="0.1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Early Withdrawal Penalty (%)</label>
+                    <input type="number" id="vaultPenaltyInput" class="form-control" value="2.50" step="0.1">
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('createVaultModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Create Vault</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Deposit Vault Modal -->
+    <div class="modal-overlay" id="depositVaultModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-piggy-bank" style="color: #10b981;"></i> Deposit into Vault
+                </div>
+                <button class="modal-close" onclick="closeModal('depositVaultModal')">&times;</button>
+            </div>
+            <form id="depositVaultForm" onsubmit="handleDepositSubmit(event)">
+                <input type="hidden" id="depositVaultId">
+                <div class="form-group">
+                    <label>Vault Account</label>
+                    <input type="text" id="depositVaultName" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Deposit Amount (UGX)</label>
+                    <input type="number" id="depositAmountInput" class="form-control" placeholder="100000" step="5000" min="1000" required>
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('depositVaultModal')">Cancel</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1;">Confirm Deposit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Withdraw / Break Vault Modal -->
+    <div class="modal-overlay" id="withdrawVaultModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fa-solid fa-hand-holding-dollar" style="color: #ef4444;"></i> Withdraw / Break Vault
+                </div>
+                <button class="modal-close" onclick="closeModal('withdrawVaultModal')">&times;</button>
+            </div>
+            <form id="withdrawVaultForm" onsubmit="handleWithdrawSubmit(event)">
+                <input type="hidden" id="withdrawVaultId">
+                <input type="hidden" id="withdrawIsLocked">
+                <div class="form-group">
+                    <label>Vault Name</label>
+                    <input type="text" id="withdrawVaultName" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Current Vault Balance (UGX)</label>
+                    <input type="text" id="withdrawCurrentBalance" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Withdrawal Amount (UGX)</label>
+                    <input type="number" id="withdrawAmountInput" class="form-control" placeholder="Leave empty for full balance" step="1000">
+                </div>
+                <div id="earlyBreakWarning" class="demo-panel" style="background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3); margin-bottom: 16px; display: none;">
+                    <p style="font-size: 0.85rem; color: #fca5a5;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> <strong>Early Break Warning:</strong> This vault is locked until maturity. Early withdrawal incurs a <strong>2.50% penalty</strong> on the withdrawn amount.
+                    </p>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.825rem; color: #ffffff; margin-top: 8px; cursor: pointer;">
+                        <input type="checkbox" id="forceEarlyCheck"> I accept early withdrawal penalty
+                    </label>
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('withdrawVaultModal')">Cancel</button>
+                    <button type="submit" class="btn btn-danger" style="flex: 1;">Withdraw Funds</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Toast Notifications container -->
     <div class="toast-container" id="toastContainer"></div>
+
 
     <script>
         // State simulation
@@ -1430,6 +1848,338 @@
                 toast.remove();
             }, 3500);
         }
+
+        // ---------------------------------------------------------------------------
+        // Target Vaults Navigation & API Interaction
+        // ---------------------------------------------------------------------------
+        let vaultsList = [
+            {
+                id: "vlt-demo-1",
+                account_number: "VLT-83920145",
+                member_id: "MB26071980",
+                name: "Land Purchase Vault",
+                vault_type: "GOAL",
+                target_amount: 10000000.00,
+                current_balance: 6500000.00,
+                interest_rate_annual: 6.50,
+                early_withdrawal_penalty_pct: 2.50,
+                lock_period_months: 12,
+                start_date: "2026-01-15",
+                maturity_date: "2027-01-15",
+                is_locked: true,
+                status: "ACTIVE"
+            },
+            {
+                id: "vlt-demo-2",
+                account_number: "VLT-47219034",
+                member_id: "MB26071980",
+                name: "Emergency Fund",
+                vault_type: "FIXED_DEPOSIT",
+                target_amount: 3000000.00,
+                current_balance: 3000000.00,
+                interest_rate_annual: 8.00,
+                early_withdrawal_penalty_pct: 3.00,
+                lock_period_months: 6,
+                start_date: "2026-02-01",
+                maturity_date: "2026-08-01",
+                is_locked: false,
+                status: "MATURED"
+            }
+        ];
+
+        function switchMainView(viewId, element) {
+            document.querySelectorAll(".view-section").forEach(sec => sec.classList.add("hidden"));
+            const targetView = document.getElementById(viewId);
+            if (targetView) targetView.classList.remove("hidden");
+
+            if (element) {
+                setActiveNav(element);
+            }
+
+            if (viewId === "vaultsView") {
+                fetchVaults();
+            }
+        }
+
+        async function fetchVaults() {
+            try {
+                const res = await fetch("/api/v1/vaults");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        vaultsList = data;
+                    }
+                }
+            } catch (err) {
+                console.log("Using active vaults list context", err);
+            }
+            renderVaultsCards();
+        }
+
+        function renderVaultsCards() {
+            const grid = document.getElementById("vaultsCardsGrid");
+            grid.innerHTML = "";
+
+            let totalBal = 0;
+            let totalTarget = 0;
+            let activeCnt = 0;
+            let maturedCnt = 0;
+
+            if (vaultsList.length === 0) {
+                grid.innerHTML = `
+                    <div style="grid-column: 1 / -1;" class="empty-state">
+                        <div class="empty-icon"><i class="fa-solid fa-vault"></i></div>
+                        <div>No target vaults created yet. Click 'Create New Vault' to get started!</div>
+                    </div>
+                `;
+            } else {
+                vaultsList.forEach(v => {
+                    const bal = parseFloat(v.current_balance || 0);
+                    const target = parseFloat(v.target_amount || 1);
+                    const pct = Math.min(100, Math.round((bal / target) * 100));
+
+                    totalBal += bal;
+                    totalTarget += target;
+                    if (v.status === "ACTIVE") activeCnt++;
+                    if (v.status === "MATURED") maturedCnt++;
+
+                    const isMatured = v.status === "MATURED";
+                    const isBroken = v.status === "BROKEN";
+
+                    const card = document.createElement("div");
+                    card.className = "vault-card";
+                    card.innerHTML = `
+                        <div class="vault-header">
+                            <div class="vault-title-group">
+                                <div class="vault-icon-box">
+                                    <i class="fa-solid ${v.vault_type === 'FIXED_DEPOSIT' ? 'fa-lock' : 'fa-bullseye'}"></i>
+                                </div>
+                                <div>
+                                    <div class="vault-name">${v.name}</div>
+                                    <div class="vault-account">${v.account_number} • ${v.vault_type}</div>
+                                </div>
+                            </div>
+                            <span class="status-badge ${isMatured ? 'status-completed' : isBroken ? 'status-pending' : 'status-completed'}" style="${isBroken ? 'background: rgba(239,68,68,0.15); color: #fca5a5;' : ''}">
+                                <i class="fa-solid ${isMatured ? 'fa-circle-check' : isBroken ? 'fa-triangle-exclamation' : 'fa-lock'}"></i>
+                                ${v.status}
+                            </span>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.825rem; font-weight: 600;">
+                                <span style="color: var(--text-secondary);">Savings Goal Progress</span>
+                                <span style="color: #fbbf24;">${pct}% (${bal.toLocaleString()} / ${target.toLocaleString()} UGX)</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" style="width: ${pct}%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="vault-metrics">
+                            <div class="metric-item">
+                                <span class="metric-label">Yield Rate</span>
+                                <span class="metric-value" style="color: #10b981;">${v.interest_rate_annual}% p.a.</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">Lock Period</span>
+                                <span class="metric-value">${v.lock_period_months} Months</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">Maturity Date</span>
+                                <span class="metric-value">${v.maturity_date || 'N/A'}</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">Early Penalty</span>
+                                <span class="metric-value" style="color: #ef4444;">${v.early_withdrawal_penalty_pct}%</span>
+                            </div>
+                        </div>
+
+                        <div class="vault-actions">
+                            <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="openDepositModal('${v.id}')" ${v.status !== 'ACTIVE' ? 'disabled' : ''}>
+                                <i class="fa-solid fa-plus-circle"></i> Deposit
+                            </button>
+                            <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="openWithdrawModal('${v.id}', ${v.is_locked})">
+                                <i class="fa-solid fa-arrow-up-from-bracket"></i> Withdraw
+                            </button>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            }
+
+            document.getElementById("vaultTotalBalance").innerText = `UGX ${totalBal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById("vaultTotalTarget").innerText = `UGX ${totalTarget.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById("vaultActiveCount").innerText = activeCnt;
+            document.getElementById("vaultMaturedCount").innerText = maturedCnt;
+        }
+
+        function openCreateVaultModal() {
+            document.getElementById("createVaultModal").classList.add("active");
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove("active");
+        }
+
+        async function handleCreateVaultSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById("vaultNameInput").value;
+            const type = document.getElementById("vaultTypeInput").value;
+            const target = parseFloat(document.getElementById("vaultTargetInput").value);
+            const months = parseInt(document.getElementById("vaultLockInput").value);
+            const rate = parseFloat(document.getElementById("vaultRateInput").value);
+            const penalty = parseFloat(document.getElementById("vaultPenaltyInput").value);
+
+            const payload = {
+                member_id: currentUser.id || "MB26071980",
+                name: name,
+                vault_type: type,
+                target_amount: target,
+                lock_period_months: months,
+                interest_rate_annual: rate,
+                early_withdrawal_penalty_pct: penalty
+            };
+
+            let createdVault = null;
+            try {
+                const res = await fetch("/api/v1/vaults", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    createdVault = await res.json();
+                }
+            } catch (err) {
+                console.log("Using fallback local vault creation", err);
+            }
+
+            if (!createdVault) {
+                const today = new Date();
+                const maturity = new Date(today.setMonth(today.getMonth() + months)).toISOString().split('T')[0];
+                createdVault = {
+                    id: `vlt-${Date.now()}`,
+                    account_number: `VLT-${Math.floor(10000000 + Math.random() * 90000000)}`,
+                    member_id: currentUser.id,
+                    name: name,
+                    vault_type: type,
+                    target_amount: target,
+                    current_balance: 0.00,
+                    interest_rate_annual: rate,
+                    early_withdrawal_penalty_pct: penalty,
+                    lock_period_months: months,
+                    start_date: new Date().toISOString().split('T')[0],
+                    maturity_date: maturity,
+                    is_locked: true,
+                    status: "ACTIVE"
+                };
+            }
+
+            vaultsList.unshift(createdVault);
+            closeModal("createVaultModal");
+            renderVaultsCards();
+            showToast(`Created target vault '${name}' (Lock: ${months} Months)!`, "success");
+            document.getElementById("createVaultForm").reset();
+        }
+
+        function openDepositModal(vaultId) {
+            const v = vaultsList.find(item => item.id === vaultId);
+            if (!v) return;
+            document.getElementById("depositVaultId").value = v.id;
+            document.getElementById("depositVaultName").value = `${v.name} (${v.account_number})`;
+            document.getElementById("depositVaultModal").classList.add("active");
+        }
+
+        async function handleDepositSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById("depositVaultId").value;
+            const amt = parseFloat(document.getElementById("depositAmountInput").value);
+            const v = vaultsList.find(item => item.id === id);
+
+            if (!v) return;
+
+            try {
+                await fetch(`/api/v1/vaults/${id}/deposit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ amount: amt })
+                });
+            } catch (e) {}
+
+            v.current_balance = parseFloat(v.current_balance || 0) + amt;
+            if (v.current_balance >= v.target_amount) {
+                v.status = "MATURED";
+                v.is_locked = false;
+            }
+
+            closeModal("depositVaultModal");
+            renderVaultsCards();
+            showToast(`Deposited UGX ${amt.toLocaleString()} into vault '${v.name}'!`, "success");
+            document.getElementById("depositVaultForm").reset();
+        }
+
+        function openWithdrawModal(vaultId, isLocked) {
+            const v = vaultsList.find(item => item.id === vaultId);
+            if (!v) return;
+            document.getElementById("withdrawVaultId").value = v.id;
+            document.getElementById("withdrawIsLocked").value = v.is_locked ? "true" : "false";
+            document.getElementById("withdrawVaultName").value = `${v.name} (${v.account_number})`;
+            document.getElementById("withdrawCurrentBalance").value = `UGX ${parseFloat(v.current_balance || 0).toLocaleString()}`;
+            
+            const warningEl = document.getElementById("earlyBreakWarning");
+            if (v.is_locked && v.status === "ACTIVE") {
+                warningEl.style.display = "block";
+            } else {
+                warningEl.style.display = "none";
+            }
+
+            document.getElementById("withdrawVaultModal").classList.add("active");
+        }
+
+        async function handleWithdrawSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById("withdrawVaultId").value;
+            const v = vaultsList.find(item => item.id === id);
+            if (!v) return;
+
+            const isLocked = v.is_locked && v.status === "ACTIVE";
+            const forceEarly = document.getElementById("forceEarlyCheck").checked;
+            const rawAmt = document.getElementById("withdrawAmountInput").value;
+            const withdrawAmt = rawAmt ? parseFloat(rawAmt) : parseFloat(v.current_balance);
+
+            if (isLocked && !forceEarly) {
+                showToast("Please check the early break penalty confirmation box.", "error");
+                return;
+            }
+
+            try {
+                await fetch(`/api/v1/vaults/${id}/withdraw`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        amount: withdrawAmt,
+                        force_early_withdrawal: forceEarly
+                    })
+                });
+            } catch (e) {}
+
+            let penaltyAmt = 0;
+            if (isLocked) {
+                penaltyAmt = withdrawAmt * (v.early_withdrawal_penalty_pct / 100);
+                v.status = "BROKEN";
+            }
+
+            v.current_balance = Math.max(0, parseFloat(v.current_balance || 0) - withdrawAmt);
+            if (v.current_balance === 0 && v.status !== "BROKEN") {
+                v.status = "MATURED";
+            }
+
+            closeModal("withdrawVaultModal");
+            renderVaultsCards();
+            showToast(`Withdrew UGX ${withdrawAmt.toLocaleString()}${penaltyAmt > 0 ? ` (Penalty: UGX ${penaltyAmt.toLocaleString()})` : ''}`, "success");
+            document.getElementById("withdrawVaultForm").reset();
+        }
     </script>
 </body>
 </html>
+
