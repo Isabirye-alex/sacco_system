@@ -73,20 +73,24 @@ DEFAULT_SEED_NEWS = [
 
 
 def seed_default_news_if_empty(db: Session):
-    if db.query(News).first() is None:
-        now = datetime.utcnow()
-        for item in DEFAULT_SEED_NEWS:
-            news = News(
-                title=item["title"],
-                content=item["content"],
-                category=item["category"],
-                priority=item["priority"],
-                icon=item["icon"],
-                is_published=True,
-                published_at=now,
-            )
-            db.add(news)
-        db.commit()
+    try:
+        News.__table__.create(bind=db.get_bind(), checkfirst=True)
+        if db.query(News).first() is None:
+            now = datetime.utcnow()
+            for item in DEFAULT_SEED_NEWS:
+                news = News(
+                    title=item["title"],
+                    content=item["content"],
+                    category=item["category"],
+                    priority=item["priority"],
+                    icon=item["icon"],
+                    is_published=True,
+                    published_at=now,
+                )
+                db.add(news)
+            db.commit()
+    except Exception:
+        db.rollback()
 
 
 @router.get("", response_model=List[NewsRead])

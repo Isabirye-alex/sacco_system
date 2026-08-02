@@ -150,6 +150,17 @@ def upgrade() -> None:
                nullable=True)
     op.drop_constraint(op.f('ix_referrals_referral_code'), 'referrals', type_='unique')
     op.create_index(op.f('ix_referrals_referral_code'), 'referrals', ['referral_code'], unique=True)
+    op.execute("""
+        DELETE FROM referrals
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id, ROW_NUMBER() OVER (PARTITION BY referred_user_id, tier ORDER BY created_at DESC) as rnum
+                FROM referrals
+                WHERE referred_user_id IS NOT NULL
+            ) t
+            WHERE t.rnum > 1
+        );
+    """)
     op.create_unique_constraint('uq_referral_user_tier', 'referrals', ['referred_user_id', 'tier'])
     op.create_foreign_key(None, 'referrals', 'users', ['referrer_id'], ['id'])
     op.create_foreign_key(None, 'referrals', 'users', ['referred_user_id'], ['id'])
