@@ -178,6 +178,11 @@ def upgrade() -> None:
                existing_type=sa.VARCHAR(),
                type_=sa.Text(),
                existing_nullable=True)
+    op.execute("""
+        UPDATE users
+        SET referral_code = upper(substring(md5(random()::text) from 1 for 8))
+        WHERE referral_code IS NULL;
+    """)
     op.alter_column('users', 'referral_code',
                existing_type=sa.VARCHAR(length=16),
                nullable=False)
