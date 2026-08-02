@@ -129,6 +129,7 @@ def upgrade() -> None:
     op.alter_column('referrals', 'status',
                existing_type=sa.VARCHAR(length=30),
                type_=sa.Enum('PENDING', 'COMPLETED', 'INVALID', 'INVITED', 'REGISTERED', 'COMMISSION_PAID', 'EXPIRED', name='referralstatus'),
+               postgresql_using='status::referralstatus',
                existing_nullable=False)
     op.alter_column('referrals', 'referral_code',
                existing_type=sa.VARCHAR(length=16),
@@ -145,6 +146,7 @@ def upgrade() -> None:
     op.alter_column('referrals', 'channel',
                existing_type=sa.VARCHAR(length=20),
                type_=sa.Enum('EMAIL', 'SMS', 'PUSH', name='notificationchannel'),
+               postgresql_using='channel::notificationchannel',
                nullable=True)
     op.drop_constraint(op.f('ix_referrals_referral_code'), 'referrals', type_='unique')
     op.create_index(op.f('ix_referrals_referral_code'), 'referrals', ['referral_code'], unique=True)
