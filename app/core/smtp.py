@@ -8,9 +8,12 @@ that's almost always an app-specific password, not your normal login
 password, since both block plain SMTP auth with regular passwords by
 default now).
 """
+import json
 import logging
 import smtplib
 import socket
+import urllib.error
+import urllib.request
 from email.message import EmailMessage
 from typing import Optional
 
@@ -32,13 +35,88 @@ def _is_network_error(exc: Exception) -> bool:
     return "unreachable" in err_str or "connection" in err_str or "refused" in err_str
 
 
+def send_via_resend_api(to: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
+    api_key = getattr(settings, "RESEND_API_KEY", "").strip()
+    if not api_key:
+        return False
+    from_email = settings.SMTP_FROM_EMAIL.strip() or "onboarding@resend.dev"
+    from_header = f"{settings.SMTP_FROM_NAME or 'SACCO System'} <{from_email}>" if "@" in from_email and not from_email.endswith("@gmail.com") else "SACCO System <onboarding@resend.dev>"
+    req_data = {
+        "from": from_header,
+        "to": [to],
+        "subject": subject,
+        "text": body,
+    }
+    if html_body:
+        req_data["html"] = html_body
+    
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(req_data).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status in (200, 201):
+                logger.info("Email sent to %s via Resend HTTP API", to)
+                print(f"✅ [HTTP EMAIL SENT] Successfully sent to {to} via Resend HTTPS API", flush=True)
+                return True
+    except Exception as exc:
+        logger.error("Resend API failed: %s", exc)
+        print(f"❌ [RESEND API ERROR] {exc}", flush=True)
+    return False
+
+
+def send_via_brevo_api(to: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
+    api_key = getattr(settings, "BREVO_API_KEY", "").strip()
+    if not api_key:
+        return False
+    from_email = settings.SMTP_FROM_EMAIL.strip() or settings.SMTP_USERNAME.strip() or "notifications@sacco.com"
+    req_data = {
+        "sender": {"name": settings.SMTP_FROM_NAME or "SACCO System", "email": from_email},
+        "to": [{"email": to}],
+        "subject": subject,
+        "textContent": body,
+    }
+    if html_body:
+        req_data["htmlContent"] = html_body
+    
+    req = urllib.request.Request(
+        "https://api.brevo.com/v3/smtp/email",
+        data=json.dumps(req_data).encode("utf-8"),
+        headers={
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        },
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status in (200, 201):
+                logger.info("Email sent to %s via Brevo HTTP API", to)
+                print(f"✅ [HTTP EMAIL SENT] Successfully sent to {to} via Brevo HTTPS API", flush=True)
+                return True
+    except Exception as exc:
+        logger.error("Brevo API failed: %s", exc)
+        print(f"❌ [BREVO API ERROR] {exc}", flush=True)
+    return False
+
+
 def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
     """
-    Sends a plain-text (optionally also HTML) email via SMTP (supports Google SMTP & App Password).
+    Sends a plain-text (optionally also HTML) email via HTTPS API (Resend/Brevo) or SMTP (Google SMTP & App Password).
     Raises SmtpError on any failure.
     """
+    # 1. Try Resend or Brevo HTTP API first if API key configured (bypasses raw socket SMTP blocks)
+    if send_via_resend_api(to, subject, body, html_body) or send_via_brevo_api(to, subject, body, html_body):
+        return
+
     if not settings.SMTP_HOST:
-        raise SmtpError("SMTP is not configured (SMTP_HOST is empty).")
+        raise SmtpError("SMTP is not configured (SMTP_HOST is empty and no HTTP Email API key set).")
 
     from_email = settings.SMTP_FROM_EMAIL.strip() or settings.SMTP_USERNAME.strip()
     if not from_email:
@@ -103,9 +181,19 @@ def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None
         print(f"❌ [SMTP ERROR] {err_msg}", flush=True)
         raise SmtpError(err_msg) from exc
     except OSError as exc:
-        err_msg = f"Could not connect to SMTP server ({settings.SMTP_HOST}:{settings.SMTP_PORT}): {exc}"
+        err_msg = (
+            f"Could not connect to SMTP server ({settings.SMTP_HOST}:{settings.SMTP_PORT}): {exc}. "
+            "Render Free instances block raw socket SMTP ports (25, 465, 587). "
+            "To send emails on Render Free tier, add RESEND_API_KEY (free 3,000 emails/mo at https://resend.com) "
+            "or BREVO_API_KEY in your Render Environment variables to send emails over HTTPS (port 443)."
+        )
         logger.error("❌ %s", err_msg)
         print(f"❌ [SMTP CONNECTION ERROR] {err_msg}", flush=True)
+        raise SmtpError(err_msg) from exc
+    except Exception as exc:
+        err_msg = f"Unexpected SMTP error: {exc}"
+        logger.error("❌ %s", err_msg, exc_info=True)
+        print(f"❌ [SMTP UNEXPECTED ERROR] {err_msg}", flush=True)
         raise SmtpError(err_msg) from exc
     except Exception as exc:
         err_msg = f"Unexpected SMTP error: {exc}"

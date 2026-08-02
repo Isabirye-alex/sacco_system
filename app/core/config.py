@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     SMTP_USER_TLS: bool = True
     SMTP_USE_SSL: bool = False
 
+    # HTTP Email APIs (Bypasses Cloud Host SMTP Port Blocks on Render/Heroku)
+    RESEND_API_KEY: str = ""
+    BREVO_API_KEY: str = ""
+
     AFRICAS_TALKING_USERNAME: str = "sandbox"
     AFRICAS_TALKING_API_KEY: str = ""
 
