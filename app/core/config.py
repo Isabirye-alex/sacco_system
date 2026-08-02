@@ -52,10 +52,7 @@ class Settings(BaseSettings):
 
 
     # Used in SMS message templates, e.g. "- Kampala SACCO"
-    SACCO_NAME: str = "SACCO Management System"
-
-
-
+    SACCO_NAME: str = "SACCO PRO"
 
     # App
     ENVIRONMENT: str = "development"
@@ -70,9 +67,14 @@ class Settings(BaseSettings):
         defaults = [
             "https://sacco-member.vercel.app",
             "https://sacco-admin.vercel.app",
+            "https://sacco-admin-rho.vercel.app",
             "http://localhost:3000",
             "http://localhost:5173",
             "http://127.0.0.1:5500",
+            "http://127.0.0.1:8080",
+            "http://localhost:8080",
+            "http://127.0.0.1:8070",
+            "http://localhost:8070",
         ]
         for d in defaults:
             if d not in origins:

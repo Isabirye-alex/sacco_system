@@ -161,6 +161,7 @@ def upgrade() -> None:
             WHERE t.rnum > 1
         );
     """)
+    op.execute("ALTER TABLE referrals DROP CONSTRAINT IF EXISTS uq_referral_user_tier;")
     op.create_unique_constraint('uq_referral_user_tier', 'referrals', ['referred_user_id', 'tier'])
     op.create_foreign_key(None, 'referrals', 'users', ['referrer_id'], ['id'])
     op.create_foreign_key(None, 'referrals', 'users', ['referred_user_id'], ['id'])

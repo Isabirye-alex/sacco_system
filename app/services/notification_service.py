@@ -39,8 +39,11 @@ def queue_notification(
 
 
 def _recipient_email(notification: Notification) -> Optional[str]:
-    if notification.member and notification.member.email:
-        return notification.member.email
+    if notification.member:
+        if notification.member.email:
+            return notification.member.email
+        if getattr(notification.member, "user", None) and notification.member.user and notification.member.user.email:
+            return notification.member.user.email
     if notification.user:
         return notification.user.email
     return None
