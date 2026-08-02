@@ -63,6 +63,7 @@ def create_target_vault(
                 member_number=generate_member_number(),
                 first_name=parts[0],
                 last_name=parts[1] if len(parts) > 1 else "User",
+                national_id=f"CM{uuid.uuid4().hex[:8].upper()}",
                 email=current_user.email,
                 status="active",
             )

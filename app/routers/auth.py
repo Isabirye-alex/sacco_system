@@ -74,24 +74,7 @@ def register(
     db.add(user)
     db.flush()
 
-    if not user.member_id and str(getattr(user.role, "value", user.role)).lower() == "member":
-        from app.models.member import Member
-        from app.services.numbering import generate_member_number
 
-        parts = (payload.full_name or "Member").strip().split(maxsplit=1)
-        first_name = parts[0]
-        last_name = parts[1] if len(parts) > 1 else "User"
-
-        member = Member(
-            member_number=generate_member_number(),
-            first_name=first_name,
-            last_name=last_name,
-            email=payload.email,
-            status="active",
-        )
-        db.add(member)
-        db.flush()
-        user.member_id = member.id
 
     if payload.ref:
         tier1_referrer = db.query(User).filter(User.referral_code == payload.ref.strip().upper()).first()
