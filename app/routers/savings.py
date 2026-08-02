@@ -115,6 +115,14 @@ def open_savings_account(
     return account
 
 
+@router.get("/accounts", response_model=list[SavingsAccountRead])
+def list_all_savings_accounts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*TELLER_ROLES)),
+):
+    return db.query(SavingsAccount).filter(SavingsAccount.is_active.is_(True)).all()
+
+
 @router.get("/accounts/{account_id}", response_model=SavingsAccountRead)
 def get_savings_account(
     account_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
