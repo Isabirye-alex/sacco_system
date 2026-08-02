@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "SACCO System"
     SMTP_USE_TLS: bool = True
+    SMTP_USER_TLS: bool = True
     SMTP_USE_SSL: bool = False
 
     AFRICAS_TALKING_USERNAME: str = "sandbox"

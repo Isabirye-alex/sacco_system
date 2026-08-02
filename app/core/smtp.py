@@ -48,7 +48,9 @@ def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None
         message.add_alternative(html_body, subtype="html")
 
     use_ssl = getattr(settings, "SMTP_USE_SSL", False) or settings.SMTP_PORT == 465
-    use_tls = getattr(settings, "SMTP_USE_TLS", True) and not use_ssl
+    use_tls = getattr(settings, "SMTP_USE_TLS", True) or getattr(settings, "SMTP_USER_TLS", True)
+    if not use_ssl and settings.SMTP_PORT == 587:
+        use_tls = True
 
     try:
         if use_ssl:
