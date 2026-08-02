@@ -25,6 +25,7 @@ from app.routers import (
     loans,
     members,
     mobile_money,
+    news,
     notifications,
     payroll,
     referrals,
@@ -182,6 +183,7 @@ app.include_router(risk_compliance.router)
 app.include_router(referrals.router)
 app.include_router(hr_payroll.router)
 app.include_router(vaults.router)
+app.include_router(news.router)
 
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles

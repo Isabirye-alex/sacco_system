@@ -33,5 +33,7 @@ from app.models.system_settings_model import SystemSettings  # noqa: F401
 from app.models.hr_payroll import Employee, PayrollRun, Payslip  # noqa: F401
 from app.models.branch import Branch  # noqa: F401
 from app.models.vault import TargetVault  # noqa: F401
+from app.models.news import News  # noqa: F401
+
 
 

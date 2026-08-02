@@ -2179,6 +2179,24 @@
             showToast(`Withdrew UGX ${withdrawAmt.toLocaleString()}${penaltyAmt > 0 ? ` (Penalty: UGX ${penaltyAmt.toLocaleString()})` : ''}`, "success");
             document.getElementById("withdrawVaultForm").reset();
         }
+
+        // Fetch dynamic Sacco News for top ticker
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                const res = await fetch("/api/v1/news");
+                if (res.ok) {
+                    const news = await res.json();
+                    if (news && news.length > 0) {
+                        const textEl = document.querySelector(".news-ticker .ticker-text");
+                        if (textEl) {
+                            textEl.textContent = news.map(n => `📢 ${n.title}: ${n.content}`).join("  •  ");
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to fetch news ticker", e);
+            }
+        });
     </script>
 </body>
 </html>
