@@ -20,20 +20,38 @@ from app.services.notification_service import dispatch, queue_notification
 logger = logging.getLogger("sacco.transaction_alerts")
 
 
-def _safe_send(db: Session, member: Member, message: str, event_type: str) -> None:
-    if not member or not member.phone_number:
+def _safe_send(db: Session, member: Member, message: str, event_type: str, subject: str = None) -> None:
+    if not member:
         return
-    notification = queue_notification(
-        db=db, channel=NotificationChannel.SMS, body=message, member_id=member.id, event_type=event_type
-    )
-    try:
-        dispatch(notification)
-        notification.status = NotificationStatus.SENT
-        notification.sent_at = datetime.utcnow()
-    except Exception as exc:  # noqa: BLE001 - SMS must never break the caller's transaction
-        notification.status = NotificationStatus.FAILED
-        notification.error_message = str(exc)
-        logger.warning("SMS alert failed for member %s (%s): %s", member.id, event_type, exc)
+
+    # 1. Send SMS if phone_number exists
+    if member.phone_number:
+        notification_sms = queue_notification(
+            db=db, channel=NotificationChannel.SMS, body=message, member_id=member.id, event_type=event_type
+        )
+        try:
+            dispatch(notification_sms)
+            notification_sms.status = NotificationStatus.SENT
+            notification_sms.sent_at = datetime.utcnow()
+        except Exception as exc:
+            notification_sms.status = NotificationStatus.FAILED
+            notification_sms.error_message = str(exc)
+            logger.warning("SMS alert failed for member %s (%s): %s", member.id, event_type, exc)
+
+    # 2. Send Email if email exists (Notifies member via Email just like SMS)
+    if member.email:
+        email_subject = subject or event_type.replace("_", " ").title()
+        notification_email = queue_notification(
+            db=db, channel=NotificationChannel.EMAIL, subject=email_subject, body=message, member_id=member.id, event_type=event_type
+        )
+        try:
+            dispatch(notification_email)
+            notification_email.status = NotificationStatus.SENT
+            notification_email.sent_at = datetime.utcnow()
+        except Exception as exc:
+            notification_email.status = NotificationStatus.FAILED
+            notification_email.error_message = str(exc)
+            logger.warning("Email alert failed for member %s (%s): %s", member.id, event_type, exc)
 
 
 def mask_account_number(account_number: str) -> str:
@@ -64,7 +82,7 @@ def notify_deposit(db: Session, member: Member, account_number: str, amount: Dec
         f"Dear {member.first_name}, UGX {amount:,.2f} has been deposited to your "
         f"{masked_acc} account. New balance: UGX {balance:,.2f}. - {settings.SACCO_NAME}"
     )
-    _safe_send(db, member, message, "savings_deposit")
+    _safe_send(db, member, message, "savings_deposit", subject=f"Deposit Alert - {settings.SACCO_NAME}")
 
 
 def notify_withdrawal(db: Session, member: Member, account_number: str, amount: Decimal, balance: Decimal) -> None:
@@ -73,7 +91,7 @@ def notify_withdrawal(db: Session, member: Member, account_number: str, amount: 
         f"Dear {member.first_name}, UGX {amount:,.2f} has been withdrawn from your "
         f"{masked_acc} account. New balance: UGX {balance:,.2f}. - {settings.SACCO_NAME}"
     )
-    _safe_send(db, member, message, "savings_withdrawal")
+    _safe_send(db, member, message, "savings_withdrawal", subject=f"Withdrawal Alert - {settings.SACCO_NAME}")
 
 
 def notify_new_member(db: Session, member: Member) -> None:
@@ -81,7 +99,7 @@ def notify_new_member(db: Session, member: Member) -> None:
         f"Welcome to {settings.SACCO_NAME}, {member.first_name}! Your membership account has been "
         f"successfully created. Member No: {member.member_number}. Thank you for joining us."
     )
-    _safe_send(db, member, message, "new_member_created")
+    _safe_send(db, member, message, "new_member_created", subject=f"Welcome to {settings.SACCO_NAME}!")
 
 
 def notify_savings_account_opened(db: Session, member: Member, account_number: str, product_name: str) -> None:
@@ -90,7 +108,7 @@ def notify_savings_account_opened(db: Session, member: Member, account_number: s
         f"Dear {member.first_name}, your new {product_name} savings account ({masked_acc}) has been "
         f"successfully created. - {settings.SACCO_NAME}"
     )
-    _safe_send(db, member, message, "savings_account_opened")
+    _safe_send(db, member, message, "savings_account_opened", subject=f"New {product_name} Account Opened")
 
 
 def notify_member_status_change(db: Session, member: Member, new_status: str) -> None:
@@ -98,7 +116,7 @@ def notify_member_status_change(db: Session, member: Member, new_status: str) ->
         f"Dear {member.first_name}, your membership status with {settings.SACCO_NAME} is now "
         f"{new_status.title()}."
     )
-    _safe_send(db, member, message, "member_status_changed")
+    _safe_send(db, member, message, "member_status_changed", subject="Membership Status Update")
 
 
 def notify_loan_decision(db: Session, member: Member, loan_number: str, decision: str, amount: Decimal) -> None:
@@ -106,7 +124,7 @@ def notify_loan_decision(db: Session, member: Member, loan_number: str, decision
         f"Dear {member.first_name}, your loan application {loan_number} for UGX {amount:,.2f} has been "
         f"{decision.lower()}. - {settings.SACCO_NAME}"
     )
-    _safe_send(db, member, message, "loan_decision")
+    _safe_send(db, member, message, "loan_decision", subject=f"Loan Application {loan_number} {decision.title()}")
 
 
 def notify_loan_disbursement(db: Session, member: Member, loan_number: str, amount: Decimal) -> None:
@@ -114,7 +132,7 @@ def notify_loan_disbursement(db: Session, member: Member, loan_number: str, amou
         f"Dear {member.first_name}, your loan {loan_number} of UGX {amount:,.2f} has been "
         f"disbursed. - {settings.SACCO_NAME}"
     )
-    _safe_send(db, member, message, "loan_disbursement")
+    _safe_send(db, member, message, "loan_disbursement", subject=f"Loan {loan_number} Disbursed")
 
 
 def notify_loan_repayment(db: Session, member: Member, loan_number: str, amount: Decimal) -> None:
@@ -122,7 +140,7 @@ def notify_loan_repayment(db: Session, member: Member, loan_number: str, amount:
         f"Dear {member.first_name}, we received your repayment of UGX {amount:,.2f} on loan "
         f"{loan_number}. Thank you. - {settings.SACCO_NAME}"
     )
-    _safe_send(db, member, message, "loan_repayment")
+    _safe_send(db, member, message, "loan_repayment", subject=f"Loan {loan_number} Repayment Receipt")
 
 
 def notify_referral_commission(db: Session, member: Member, amount: Decimal, referred_name: str) -> None:
@@ -130,7 +148,7 @@ def notify_referral_commission(db: Session, member: Member, amount: Decimal, ref
         f"Dear {member.first_name}, you've earned a UGX {amount:,.2f} referral commission for inviting "
         f"{referred_name} to join {settings.SACCO_NAME}. It's been credited to your savings account."
     )
-    _safe_send(db, member, message, "referral_commission")
+    _safe_send(db, member, message, "referral_commission", subject="Referral Commission Credited")
 
 
 
