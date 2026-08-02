@@ -172,7 +172,6 @@ def post_savings_transaction(
     )
     account.balance = new_balance
     account.last_transaction_at = datetime.utcnow()
-    account.member.last_activity_at = datetime.utcnow()
     db.add(txn)
     db.flush()  # assigns txn.id, needed below both as a JournalEntry source reference and for the response
 
@@ -252,7 +251,6 @@ def transfer_savings_internal(
     )
     sender_account.balance = sender_new_bal
     sender_account.last_transaction_at = datetime.utcnow()
-    sender_account.member.last_activity_at = datetime.utcnow()
     db.add(sender_txn)
 
     # Credit Recipient
@@ -267,7 +265,6 @@ def transfer_savings_internal(
     )
     recipient_account.balance = recip_new_bal
     recipient_account.last_transaction_at = datetime.utcnow()
-    recipient_account.member.last_activity_at = datetime.utcnow()
     db.add(recip_txn)
 
     db.flush()

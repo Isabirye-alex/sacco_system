@@ -459,8 +459,6 @@ def _finalize_success(db: Session, txn: MobileMoneyTransaction) -> None:
             db.flush()
             account.balance = new_balance
             account.last_transaction_at = datetime.utcnow()
-            if account.member:
-                account.member.last_activity_at = datetime.utcnow()
             post_savings_transaction_gl(db, account, savings_txn, channel="mobile_money")
             if member:
                 notify_deposit(db, member, account.account_number, txn.amount, new_balance)
@@ -481,8 +479,6 @@ def _finalize_success(db: Session, txn: MobileMoneyTransaction) -> None:
             db.flush()
             account.balance = new_balance
             account.last_transaction_at = datetime.utcnow()
-            if account.member:
-                account.member.last_activity_at = datetime.utcnow()
             post_savings_transaction_gl(db, account, savings_txn, channel="mobile_money")
             if member:
                 notify_withdrawal(db, member, account.account_number, txn.amount, new_balance)

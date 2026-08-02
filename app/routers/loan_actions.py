@@ -60,19 +60,15 @@ def return_loan_for_correction(
 
     loan.status = LoanStatus.UNDER_REVIEW
 
-    from app.core.enums import NotificationChannel
-    from app.services.notification_service import dispatch, queue_notification
+    from app.services.notification_service import send_member_notifications
 
     if loan.member:
-        notification = queue_notification(
-            db, channel=NotificationChannel.SMS,
-            body=f"Your loan application {loan.loan_number} needs corrections: {payload.notes}",
-            member_id=loan.member_id, event_type="loan_returned_for_correction",
+        send_member_notifications(
+            db,
+            loan.member,
+            f"Your loan application {loan.loan_number} needs corrections: {payload.notes}",
+            event_type="loan_returned_for_correction",
         )
-        try:
-            dispatch(notification)
-        except Exception:
-            pass
 
     record_audit(
         db, actor_user_id=current_user.id, action="loan.returned_for_correction", entity_type="LoanApplication",
@@ -166,23 +162,19 @@ def notify_guarantors(
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found.")
 
-    from app.core.enums import NotificationChannel
-    from app.services.notification_service import dispatch, queue_notification
+    from app.services.notification_service import send_member_notifications
 
     notified = 0
     for guarantor in loan.guarantors:
         member = db.get(Member, guarantor.guarantor_member_id)
         if not member:
             continue
-        notification = queue_notification(
-            db, channel=NotificationChannel.SMS,
-            body=f"ALERT: The loan {loan.loan_number} you guaranteed is overdue. Please encourage the borrower to clear the outstanding amount.",
-            member_id=member.id, event_type="guarantor_collections_alert",
+        send_member_notifications(
+            db,
+            member,
+            f"ALERT: The loan {loan.loan_number} you guaranteed is overdue. Please encourage the borrower to clear the outstanding amount.",
+            event_type="guarantor_collections_alert",
         )
-        try:
-            dispatch(notification)
-        except Exception:
-            pass  # a failed SMS shouldn't block notifying the rest of the guarantors
         notified += 1
 
     record_audit(

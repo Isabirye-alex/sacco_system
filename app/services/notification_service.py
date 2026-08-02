@@ -5,11 +5,13 @@ real integrations; Push remains a logging stub - no push provider has been
 requested yet.
 """
 import logging
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.core.enums import NotificationChannel, NotificationStatus
+from app.models.member import Member
 from app.models.notification import Notification
 
 logger = logging.getLogger("sacco.notifications")
@@ -47,6 +49,63 @@ def _recipient_email(notification: Notification) -> Optional[str]:
     if notification.user:
         return notification.user.email
     return None
+
+
+def send_member_notifications(
+    db: Session,
+    member: Member,
+    body: str,
+    event_type: str,
+    subject: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> None:
+    """
+    Backend-owned notification fanout for core events: sends the same
+    message via SMS and email when those recipient details are present.
+    Delivery failures are swallowed so the underlying business action is not
+    blocked by an outbound channel issue.
+    """
+    if not member:
+        return
+
+    email_subject = subject or event_type.replace("_", " ").title()
+
+    if member.phone_number:
+        notification_sms = queue_notification(
+            db=db,
+            channel=NotificationChannel.SMS,
+            body=body,
+            member_id=member.id,
+            user_id=user_id,
+            event_type=event_type,
+        )
+        try:
+            dispatch(notification_sms)
+            notification_sms.status = NotificationStatus.SENT
+            notification_sms.sent_at = datetime.utcnow()
+        except Exception as exc:
+            notification_sms.status = NotificationStatus.FAILED
+            notification_sms.error_message = str(exc)
+            logger.warning("SMS alert failed for member %s (%s): %s", member.id, event_type, exc)
+
+    if member.email:
+        notification_email = queue_notification(
+            db=db,
+            channel=NotificationChannel.EMAIL,
+            subject=email_subject,
+            body=body,
+            member_id=member.id,
+            user_id=user_id,
+            event_type=event_type,
+        )
+        try:
+            dispatch(notification_email)
+            notification_email.status = NotificationStatus.SENT
+            notification_email.sent_at = datetime.utcnow()
+        except Exception as exc:
+            notification_email.status = NotificationStatus.FAILED
+            notification_email.error_message = str(exc)
+            logger.warning("Email alert failed for member %s (%s): %s", member.id, event_type, exc)
 
 
 def dispatch(notification: Notification) -> None:

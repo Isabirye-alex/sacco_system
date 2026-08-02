@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.enums import NotificationChannel, NotificationStatus
 from app.models.member import Member
-from app.services.notification_service import dispatch, queue_notification
+from app.services.notification_service import send_member_notifications
 
 logger = logging.getLogger("sacco.transaction_alerts")
 
@@ -24,34 +24,13 @@ def _safe_send(db: Session, member: Member, message: str, event_type: str, subje
     if not member:
         return
 
-    # 1. Send SMS if phone_number exists
-    if member.phone_number:
-        notification_sms = queue_notification(
-            db=db, channel=NotificationChannel.SMS, body=message, member_id=member.id, event_type=event_type
-        )
-        try:
-            dispatch(notification_sms)
-            notification_sms.status = NotificationStatus.SENT
-            notification_sms.sent_at = datetime.utcnow()
-        except Exception as exc:
-            notification_sms.status = NotificationStatus.FAILED
-            notification_sms.error_message = str(exc)
-            logger.warning("SMS alert failed for member %s (%s): %s", member.id, event_type, exc)
-
-    # 2. Send Email if email exists (Notifies member via Email just like SMS)
-    if member.email:
-        email_subject = subject or event_type.replace("_", " ").title()
-        notification_email = queue_notification(
-            db=db, channel=NotificationChannel.EMAIL, subject=email_subject, body=message, member_id=member.id, event_type=event_type
-        )
-        try:
-            dispatch(notification_email)
-            notification_email.status = NotificationStatus.SENT
-            notification_email.sent_at = datetime.utcnow()
-        except Exception as exc:
-            notification_email.status = NotificationStatus.FAILED
-            notification_email.error_message = str(exc)
-            logger.warning("Email alert failed for member %s (%s): %s", member.id, event_type, exc)
+    send_member_notifications(
+        db=db,
+        member=member,
+        body=message,
+        event_type=event_type,
+        subject=subject,
+    )
 
 
 def mask_account_number(account_number: str) -> str:

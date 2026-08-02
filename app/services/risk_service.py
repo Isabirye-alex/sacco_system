@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.enums import LoanStatus, MemberStatus, NotificationChannel
 from app.models.loan import LoanApplication, LoanRepaymentSchedule
 from app.models.member import Member
-from app.services.notification_service import dispatch, queue_notification
+from app.services.notification_service import send_member_notifications
 
 
 def sweep_dormant_members(db: Session) -> int:
@@ -39,17 +39,12 @@ def sweep_dormant_members(db: Session) -> int:
     )
     for member in db.scalars(stage1_stmt).all():
         member.dormancy_notified_stage = 1
-        notif = queue_notification(
+        send_member_notifications(
             db,
-            channel=NotificationChannel.SMS,
-            body=f"Dear {member.first_name}, your account {member.member_number} has been inactive for 5 months. Please initiate a transaction to keep it active.",
-            member_id=member.id,
+            member,
+            f"Dear {member.first_name}, your account {member.member_number} has been inactive for 5 months. Please initiate a transaction to keep it active.",
             event_type="dormancy_warning_stage1",
         )
-        try:
-            dispatch(notif)
-        except Exception:
-            pass
 
     # Stage 2: 6 months (180 days) - Set DORMANT and Alert Next-of-Kin
     stage2_stmt = select(Member).where(
@@ -63,17 +58,12 @@ def sweep_dormant_members(db: Session) -> int:
         member.dormancy_notified_stage = 2
         dormant_count += 1
         nok_names = ", ".join([nok.full_name for nok in member.next_of_kin]) or "Next-of-Kin"
-        notif = queue_notification(
+        send_member_notifications(
             db,
-            channel=NotificationChannel.SMS,
-            body=f"DORMANCY NOTICE: Account {member.member_number} ({member.full_name}) is now DORMANT. Alert sent to registered NOK: {nok_names}.",
-            member_id=member.id,
+            member,
+            f"DORMANCY NOTICE: Account {member.member_number} ({member.full_name}) is now DORMANT. Alert sent to registered NOK: {nok_names}.",
             event_type="dormancy_alert_stage2_nok",
         )
-        try:
-            dispatch(notif)
-        except Exception:
-            pass
 
     # Stage 3: 7 months (210 days) - Alert Trusted Contacts
     stage3_stmt = select(Member).where(
@@ -85,17 +75,12 @@ def sweep_dormant_members(db: Session) -> int:
     for member in db.scalars(stage3_stmt).all():
         member.dormancy_notified_stage = 3
         tc_names = ", ".join([tc.full_name for tc in member.trusted_contacts]) or "Trusted Contacts"
-        notif = queue_notification(
+        send_member_notifications(
             db,
-            channel=NotificationChannel.SMS,
-            body=f"URGENT DORMANCY ESCALATION: Account {member.member_number} ({member.full_name}) inactive for 7 months. Trusted Contacts ({tc_names}) have been notified.",
-            member_id=member.id,
+            member,
+            f"URGENT DORMANCY ESCALATION: Account {member.member_number} ({member.full_name}) inactive for 7 months. Trusted Contacts ({tc_names}) have been notified.",
             event_type="dormancy_alert_stage3_trusted_contact",
         )
-        try:
-            dispatch(notif)
-        except Exception:
-            pass
 
     db.commit()
     return dormant_count
