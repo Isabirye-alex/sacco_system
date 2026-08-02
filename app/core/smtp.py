@@ -43,11 +43,15 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
     if not webhook_url:
         return False
     
+    clean_html = html_body or body
+    if len(clean_html) > 4000:
+        clean_html = clean_html[:4000]
+
     query_params = {
         "to": to,
         "subject": subject,
         "body": body,
-        "html_body": html_body or body
+        "html_body": clean_html
     }
     
     delimiter = "&" if "?" in webhook_url else "?"
@@ -59,7 +63,8 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
         method="GET"
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        # Increase timeout to 35s so Google Apps Script mail dispatch can finish cleanly
+        with urllib.request.urlopen(req, timeout=35) as resp:
             resp_str = resp.read().decode("utf-8", errors="ignore")
             if resp.status in (200, 201) or "success" in resp_str.lower():
                 logger.info("Email sent to %s via Google Apps Script Webhook", to)
@@ -75,6 +80,10 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
                 "In Google Apps Script, click Deploy -> Manage deployments -> Edit (pencil) -> Change 'Who has access' to 'Anyone' -> Deploy a New Version."
             ) from exc
         raise SmtpError(f"Google Webhook Error ({exc.code}): {err_body or exc.reason}") from exc
+    except TimeoutError as exc:
+        logger.error("Gmail Webhook timed out: %s", exc)
+        print(f"❌ [GMAIL WEBHOOK TIMEOUT] {exc}", flush=True)
+        raise SmtpError("Google Webhook connection timed out. Retrying recommended.") from exc
     except Exception as exc:
         logger.error("Gmail Webhook failed: %s", exc)
         print(f"❌ [GMAIL WEBHOOK ERROR] {exc}", flush=True)
