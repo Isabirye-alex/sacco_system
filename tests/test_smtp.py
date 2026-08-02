@@ -10,6 +10,22 @@ from app.core.smtp import SmtpError, send_email, verify_smtp_connection
 from app.integrations.smtp_client import send_email as reexported_send_email, verify_smtp_connection as reexported_verify
 
 
+class _FakeWebhookResponse:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return b"<html><body>Google Apps Script deployment page</body></html>"
+
+    def decode(self, *args, **kwargs):
+        return self.read().decode(*args, **kwargs)
+
+
 def test_smtp_client_reexport():
     """Verify integrations.smtp_client re-exports send_email successfully."""
     assert send_email is reexported_send_email
@@ -103,3 +119,18 @@ def test_send_test_email_endpoint(mock_send_email, client, admin_headers):
         subject="[SACCO System] Test Email Verification",
         body="This is a test email sent from SACCO System using Google SMTP configuration. Your email settings are working correctly!"
     )
+
+
+@patch("urllib.request.urlopen")
+def test_send_email_rejects_html_200_webhook_as_false_positive(mock_urlopen, monkeypatch):
+    """A plain HTML 200 response from the Google Apps Script webhook must not count as a delivered email."""
+    monkeypatch.setattr(settings, "GMAIL_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.setattr(settings, "SMTP_HOST", "")
+    mock_urlopen.return_value = _FakeWebhookResponse()
+
+    with pytest.raises(SmtpError, match="SMTP is not configured"):
+        send_email(
+            to="recipient@example.com",
+            subject="Test Subject",
+            body="Test Body Message",
+        )

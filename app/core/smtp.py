@@ -42,7 +42,7 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
     webhook_url = getattr(settings, "GMAIL_WEBHOOK_URL", "").strip()
     if not webhook_url:
         return False
-    
+
     clean_html = html_body or body
     if len(clean_html) > 4000:
         clean_html = clean_html[:4000]
@@ -53,7 +53,7 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
         "body": body,
         "html_body": clean_html
     }
-    
+
     delimiter = "&" if "?" in webhook_url else "?"
     full_url = f"{webhook_url}{delimiter}{urllib.parse.urlencode(query_params)}"
 
@@ -66,7 +66,15 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
         # Increase timeout to 35s so Google Apps Script mail dispatch can finish cleanly
         with urllib.request.urlopen(req, timeout=35) as resp:
             resp_str = resp.read().decode("utf-8", errors="ignore")
-            if resp.status in (200, 201) or "success" in resp_str.lower():
+            normalized = resp_str.lower().strip()
+            response_json_or_text = normalized.replace("\n", " ")
+            is_html_response = "<html" in response_json_or_text or "<!doctype html" in response_json_or_text
+
+            # A plain HTTP 200 with a deployment HTML page is NOT proof of delivery.
+            # Only treat the webhook as confirmed if it explicitly returns a success
+            # indicator in the response payload.
+            success_markers = ("success", "sent", "queued", "ok")
+            if resp.status in (200, 201) and not is_html_response and any(marker in response_json_or_text for marker in success_markers):
                 logger.info("Email sent to %s via Google Apps Script Webhook", to)
                 print(f"✅ [HTTP EMAIL SENT] Successfully sent to {to} via Google Apps Script Webhook", flush=True)
                 return True
