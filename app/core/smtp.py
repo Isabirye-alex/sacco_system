@@ -24,31 +24,66 @@ class SmtpError(Exception):
 
 def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
     """
-    Sends a plain-text (optionally also HTML) email. Raises SmtpError on
-    any failure - callers must catch this themselves; see
-    app/services/notification_service.py for how the rest of the system
-    treats an email failure the same way it treats an SMS failure (logged,
-    never allowed to break the transaction that triggered it).
+    Sends a plain-text (optionally also HTML) email via SMTP (supports Google SMTP & App Password).
+    Raises SmtpError on any failure.
     """
     if not settings.SMTP_HOST:
         raise SmtpError("SMTP is not configured (SMTP_HOST is empty).")
 
+    from_email = settings.SMTP_FROM_EMAIL.strip() or settings.SMTP_USERNAME.strip()
+    if not from_email:
+        raise SmtpError("SMTP sender email is not configured (set SMTP_FROM_EMAIL or SMTP_USERNAME).")
+
+    from_name = getattr(settings, "SMTP_FROM_NAME", "") or getattr(settings, "SACCO_NAME", "SACCO System")
+    
+    # Strip spaces from Google App Password if user pasted "xxxx yyyy zzzz wwww"
+    password = settings.SMTP_PASSWORD.replace(" ", "") if settings.SMTP_PASSWORD else ""
+
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL}>"
+    message["From"] = f"{from_name} <{from_email}>"
     message["To"] = to
     message.set_content(body)
     if html_body:
         message.add_alternative(html_body, subtype="html")
 
+    use_ssl = getattr(settings, "SMTP_USE_SSL", False) or settings.SMTP_PORT == 465
+    use_tls = getattr(settings, "SMTP_USE_TLS", True) and not use_ssl
+
     try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as client:
-            if settings.SMTP_USE_TLS:
-                client.starttls()
-            if settings.SMTP_USERNAME:
-                client.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-            client.send_message(message)
+        if use_ssl:
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as client:
+                if settings.SMTP_USERNAME:
+                    client.login(settings.SMTP_USERNAME, password)
+                client.send_message(message)
+        else:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as client:
+                if use_tls:
+                    client.starttls()
+                if settings.SMTP_USERNAME:
+                    client.login(settings.SMTP_USERNAME, password)
+                client.send_message(message)
+        logger.info("Email successfully sent to %s via %s", to, settings.SMTP_HOST)
+    except smtplib.SMTPAuthenticationError as exc:
+        is_google = "gmail.com" in settings.SMTP_HOST.lower()
+        hint = (
+            " Check your Gmail email and 16-character App Password (requires 2-Step Verification enabled)."
+            if is_google else ""
+        )
+        raise SmtpError(f"SMTP authentication failed ({exc.smtp_code}): {exc.smtp_error.decode('utf-8', errors='ignore') if isinstance(exc.smtp_error, bytes) else exc.smtp_error}.{hint}") from exc
     except smtplib.SMTPException as exc:
         raise SmtpError(f"SMTP send failed: {exc}") from exc
     except OSError as exc:
-        raise SmtpError(f"Could not connect to SMTP server: {exc}") from exc
+        raise SmtpError(f"Could not connect to SMTP server ({settings.SMTP_HOST}:{settings.SMTP_PORT}): {exc}") from exc
+
+
+def verify_smtp_connection(target_email: str) -> None:
+    """
+    Sends a test email to verify Google SMTP / App Password credentials.
+    """
+    send_email(
+        to=target_email,
+        subject="[SACCO System] Test Email Verification",
+        body="This is a test email sent from SACCO System using Google SMTP configuration. Your email settings are working correctly!"
+    )
+

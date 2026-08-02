@@ -65,3 +65,22 @@ def send_notification(
 @router.get("/members/{member_id}", response_model=list[NotificationRead])
 def list_member_notifications(member_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Notification).filter(Notification.member_id == member_id).order_by(Notification.created_at.desc()).all()
+
+
+@router.post("/test-email")
+def send_test_email(
+    target_email: str,
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # type: ignore
+):
+    """
+    Sends a test email to target_email to verify Google SMTP & App Password setup.
+    """
+    from app.core.smtp import SmtpError, verify_smtp_connection
+
+    try:
+        verify_smtp_connection(target_email)
+        return {"status": "success", "message": f"Test email successfully dispatched to {target_email}."}
+    except SmtpError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
