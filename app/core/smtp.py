@@ -1,4 +1,5 @@
 """Google Apps Script-backed email transport for SACCO notifications."""
+import json
 import logging
 import urllib.error
 import urllib.parse
@@ -12,6 +13,31 @@ logger = logging.getLogger("sacco.smtp")
 
 class SmtpError(Exception):
     pass
+
+
+def _is_explicit_success_payload(response_text: str) -> bool:
+    normalized = response_text.strip().lower()
+    if not normalized:
+        return False
+    if "<html" in normalized or "<!doctype html" in normalized:
+        return False
+
+    try:
+        payload = json.loads(response_text)
+    except json.JSONDecodeError:
+        success_markers = ("success", "sent", "queued", "ok")
+        return any(marker in normalized for marker in success_markers)
+
+    if isinstance(payload, dict):
+        result = payload.get("result")
+        sent = payload.get("sent")
+        if result == "success":
+            return True
+        if sent is True:
+            return True
+        return False
+
+    return False
 
 
 def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
@@ -42,15 +68,7 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
         # Increase timeout to 35s so Google Apps Script mail dispatch can finish cleanly
         with urllib.request.urlopen(req, timeout=35) as resp:
             resp_str = resp.read().decode("utf-8", errors="ignore")
-            normalized = resp_str.lower().strip()
-            response_json_or_text = normalized.replace("\n", " ")
-            is_html_response = "<html" in response_json_or_text or "<!doctype html" in response_json_or_text
-
-            # A plain HTTP 200 with a deployment HTML page is NOT proof of delivery.
-            # Only treat the webhook as confirmed if it explicitly returns a success
-            # indicator in the response payload.
-            success_markers = ("success", "sent", "queued", "ok")
-            if resp.status in (200, 201) and not is_html_response and any(marker in response_json_or_text for marker in success_markers):
+            if resp.status in (200, 201) and _is_explicit_success_payload(resp_str):
                 logger.info("Email sent to %s via Google Apps Script Webhook", to)
                 print(f"✅ [HTTP EMAIL SENT] Successfully sent to {to} via Google Apps Script Webhook", flush=True)
                 return True
