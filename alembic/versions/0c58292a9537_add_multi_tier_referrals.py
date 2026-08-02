@@ -97,7 +97,25 @@ def upgrade() -> None:
     op.alter_column('payslips', 'payment_status',
                existing_type=sa.VARCHAR(length=20),
                type_=sa.Enum('PENDING', 'PAID', name='payslippaymentstatus'),
+               postgresql_using='payment_status::payslippaymentstatus',
                existing_nullable=False)
+    op.execute("""
+        UPDATE referrals
+        SET referrer_id = (
+            SELECT u.id FROM users u WHERE u.member_id = referrals.referrer_member_id LIMIT 1
+        )
+        WHERE referrer_id IS NULL AND referrer_member_id IS NOT NULL;
+    """)
+    op.execute("""
+        UPDATE referrals
+        SET referrer_id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
+        WHERE referrer_id IS NULL;
+    """)
+    op.execute("""
+        UPDATE referrals
+        SET referred_user_id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
+        WHERE referred_user_id IS NULL;
+    """)
     op.alter_column('referrals', 'referrer_id',
                existing_type=sa.VARCHAR(length=36),
                nullable=False)

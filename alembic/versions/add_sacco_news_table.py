@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'add_sacco_news'
-down_revision: Union[str, None] = 'e37a4c5483af'
+down_revision: Union[str, None] = '0c58292a9537'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
