@@ -48,12 +48,29 @@ def create_target_vault(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    member = db.query(Member).filter(Member.id == payload.member_id).first()
+    target_member_id = payload.member_id or current_user.member_id
+    member = None
+    if target_member_id:
+        member = db.query(Member).filter(Member.id == target_member_id).first()
+
     if not member:
-        raise HTTPException(
-            status_code=status.HTTP_444_NOT_FOUND if hasattr(status, "HTTP_444_NOT_FOUND") else 404,
-            detail=f"Member with ID '{payload.member_id}' not found.",
-        )
+        # Fall back to finding member by email or auto-creating member for user
+        member = db.query(Member).filter(Member.email == current_user.email).first()
+        if not member:
+            from app.services.numbering import generate_member_number
+            parts = (current_user.full_name or "Member").strip().split(maxsplit=1)
+            member = Member(
+                member_number=generate_member_number(db),
+                first_name=parts[0],
+                last_name=parts[1] if len(parts) > 1 else "User",
+                email=current_user.email,
+                status="active",
+            )
+            db.add(member)
+            db.flush()
+        current_user.member_id = member.id
+        db.add(current_user)
+        db.flush()
 
     account_num = _generate_vault_account_number(db)
     today = date.today()
@@ -62,7 +79,7 @@ def create_target_vault(
     vault = TargetVault(
         id=str(uuid.uuid4()),
         account_number=account_num,
-        member_id=payload.member_id,
+        member_id=member.id,
         name=payload.name,
         vault_type=payload.vault_type,
         target_amount=payload.target_amount,
@@ -99,8 +116,9 @@ def list_target_vaults(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(TargetVault)
-    if member_id:
-        query = query.filter(TargetVault.member_id == member_id)
+    target_id = member_id if member_id not in ("undefined", "null", "none") else current_user.member_id
+    if target_id:
+        query = query.filter(TargetVault.member_id == target_id)
     if status_filter:
         query = query.filter(TargetVault.status == status_filter.upper())
 
@@ -113,7 +131,8 @@ def get_member_vault_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    vaults = db.query(TargetVault).filter(TargetVault.member_id == member_id).all()
+    target_id = member_id if member_id not in ("undefined", "null", "none") else current_user.member_id
+    vaults = db.query(TargetVault).filter(TargetVault.member_id == target_id).all() if target_id else []
     
     total_vaults = len(vaults)
     active_vaults = sum(1 for v in vaults if v.status == "ACTIVE")
