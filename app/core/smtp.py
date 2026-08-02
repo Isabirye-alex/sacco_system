@@ -72,11 +72,25 @@ def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None
             " Check your Gmail email and 16-character App Password (requires 2-Step Verification enabled)."
             if is_google else ""
         )
-        raise SmtpError(f"SMTP authentication failed ({exc.smtp_code}): {exc.smtp_error.decode('utf-8', errors='ignore') if isinstance(exc.smtp_error, bytes) else exc.smtp_error}.{hint}") from exc
+        err_msg = f"SMTP authentication failed ({exc.smtp_code}): {exc.smtp_error.decode('utf-8', errors='ignore') if isinstance(exc.smtp_error, bytes) else exc.smtp_error}.{hint}"
+        logger.error("❌ %s", err_msg)
+        print(f"❌ [SMTP AUTH ERROR] {err_msg}", flush=True)
+        raise SmtpError(err_msg) from exc
     except smtplib.SMTPException as exc:
-        raise SmtpError(f"SMTP send failed: {exc}") from exc
+        err_msg = f"SMTP send failed: {exc}"
+        logger.error("❌ %s", err_msg)
+        print(f"❌ [SMTP ERROR] {err_msg}", flush=True)
+        raise SmtpError(err_msg) from exc
     except OSError as exc:
-        raise SmtpError(f"Could not connect to SMTP server ({settings.SMTP_HOST}:{settings.SMTP_PORT}): {exc}") from exc
+        err_msg = f"Could not connect to SMTP server ({settings.SMTP_HOST}:{settings.SMTP_PORT}): {exc}"
+        logger.error("❌ %s", err_msg)
+        print(f"❌ [SMTP CONNECTION ERROR] {err_msg}", flush=True)
+        raise SmtpError(err_msg) from exc
+    except Exception as exc:
+        err_msg = f"Unexpected SMTP error: {exc}"
+        logger.error("❌ %s", err_msg, exc_info=True)
+        print(f"❌ [SMTP UNEXPECTED ERROR] {err_msg}", flush=True)
+        raise SmtpError(err_msg) from exc
 
 
 def verify_smtp_connection(target_email: str) -> None:

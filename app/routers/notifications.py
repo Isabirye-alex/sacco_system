@@ -14,6 +14,10 @@ from app.models.user import User
 from app.schemas.misc import NotificationCreate, NotificationRead
 from app.services.notification_service import dispatch, queue_notification
 
+import logging
+
+logger = logging.getLogger("sacco.notifications")
+
 router = APIRouter(prefix="/api/v1/notifications", tags=["Notifications"])
 
 
@@ -32,7 +36,10 @@ def _send_in_background(notification_id: str):
             dispatch(notification)
             notification.status = NotificationStatus.SENT
             notification.sent_at = datetime.utcnow() # type: ignore
+            print(f"✅ [NOTIFICATION SENT] ID: {notification_id} | Channel: {notification.channel}", flush=True)
         except Exception as exc:  # pragma: no cover - defensive
+            logger.error("❌ Notification dispatch failed for ID %s: %s", notification_id, exc, exc_info=True)
+            print(f"❌ [NOTIFICATION FAILED] ID: {notification_id} | Error: {exc}", flush=True)
             notification.status = NotificationStatus.FAILED
             notification.error_message = str(exc)
         db.commit()
