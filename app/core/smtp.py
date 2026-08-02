@@ -35,84 +35,49 @@ def _is_network_error(exc: Exception) -> bool:
     return "unreachable" in err_str or "connection" in err_str or "refused" in err_str
 
 
-def send_via_resend_api(to: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
-    api_key = getattr(settings, "RESEND_API_KEY", "").strip()
-    if not api_key:
+def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
+    webhook_url = getattr(settings, "GMAIL_WEBHOOK_URL", "").strip()
+    if not webhook_url:
         return False
-    from_email = settings.SMTP_FROM_EMAIL.strip() or "onboarding@resend.dev"
-    from_header = f"{settings.SMTP_FROM_NAME or 'SACCO System'} <{from_email}>" if "@" in from_email and not from_email.endswith("@gmail.com") else "SACCO System <onboarding@resend.dev>"
+    
     req_data = {
-        "from": from_header,
-        "to": [to],
+        "to": to,
         "subject": subject,
-        "text": body,
+        "body": body,
+        "html_body": html_body or body
     }
-    if html_body:
-        req_data["html"] = html_body
     
     req = urllib.request.Request(
-        "https://api.resend.com/emails",
+        webhook_url,
         data=json.dumps(req_data).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        headers={"Content-Type": "application/json"},
         method="POST"
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=12) as resp:
             if resp.status in (200, 201):
-                logger.info("Email sent to %s via Resend HTTP API", to)
-                print(f"✅ [HTTP EMAIL SENT] Successfully sent to {to} via Resend HTTPS API", flush=True)
+                logger.info("Email sent to %s via Google Apps Script Webhook", to)
+                print(f"✅ [HTTP EMAIL SENT] Successfully sent to {to} via Google Apps Script Webhook", flush=True)
                 return True
     except Exception as exc:
-        logger.error("Resend API failed: %s", exc)
-        print(f"❌ [RESEND API ERROR] {exc}", flush=True)
+        logger.error("Gmail Webhook failed: %s", exc)
+        print(f"❌ [GMAIL WEBHOOK ERROR] {exc}", flush=True)
     return False
 
 
-def send_via_brevo_api(to: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
-    api_key = getattr(settings, "BREVO_API_KEY", "").strip()
-    if not api_key:
-        return False
-    from_email = settings.SMTP_FROM_EMAIL.strip() or settings.SMTP_USERNAME.strip() or "notifications@sacco.com"
-    req_data = {
-        "sender": {"name": settings.SMTP_FROM_NAME or "SACCO System", "email": from_email},
-        "to": [{"email": to}],
-        "subject": subject,
-        "textContent": body,
-    }
-    if html_body:
-        req_data["htmlContent"] = html_body
-    
-    req = urllib.request.Request(
-        "https://api.brevo.com/v3/smtp/email",
-        data=json.dumps(req_data).encode("utf-8"),
-        headers={
-            "api-key": api_key,
-            "Content-Type": "application/json",
-        },
-        method="POST"
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status in (200, 201):
-                logger.info("Email sent to %s via Brevo HTTP API", to)
-                print(f"✅ [HTTP EMAIL SENT] Successfully sent to {to} via Brevo HTTPS API", flush=True)
-                return True
-    except Exception as exc:
-        logger.error("Brevo API failed: %s", exc)
-        print(f"❌ [BREVO API ERROR] {exc}", flush=True)
-    return False
+from app.core.email_template import build_sacco_email_html
 
 
 def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
     """
-    Sends a plain-text (optionally also HTML) email via HTTPS API (Resend/Brevo) or SMTP (Google SMTP & App Password).
+    Sends a plain-text (optionally also HTML) email via HTTPS API (Google Apps Script Webhook) or SMTP fallback.
     Raises SmtpError on any failure.
     """
-    # 1. Try Resend or Brevo HTTP API first if API key configured (bypasses raw socket SMTP blocks)
-    if send_via_resend_api(to, subject, body, html_body) or send_via_brevo_api(to, subject, body, html_body):
+    if not html_body:
+        html_body = build_sacco_email_html(subject, body, getattr(settings, "SMTP_FROM_NAME", "") or getattr(settings, "SACCO_NAME", "SACCO PRO"))
+
+    # 1. Try Google Apps Script Webhook first (bypasses raw socket SMTP blocks on Render)
+    if send_via_gmail_webhook(to, subject, body, html_body):
         return
 
     if not settings.SMTP_HOST:
