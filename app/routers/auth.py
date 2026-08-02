@@ -74,7 +74,7 @@ def register(
     db.add(user)
     db.flush()
 
-    if not user.member_id and user.role == UserRole.MEMBER:
+    if not user.member_id and str(getattr(user.role, "value", user.role)).lower() == "member":
         from app.models.member import Member
         from app.services.numbering import generate_member_number
 
@@ -83,7 +83,7 @@ def register(
         last_name = parts[1] if len(parts) > 1 else "User"
 
         member = Member(
-            member_number=generate_member_number(db),
+            member_number=generate_member_number(),
             first_name=first_name,
             last_name=last_name,
             email=payload.email,

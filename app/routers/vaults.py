@@ -60,7 +60,7 @@ def create_target_vault(
             from app.services.numbering import generate_member_number
             parts = (current_user.full_name or "Member").strip().split(maxsplit=1)
             member = Member(
-                member_number=generate_member_number(db),
+                member_number=generate_member_number(),
                 first_name=parts[0],
                 last_name=parts[1] if len(parts) > 1 else "User",
                 email=current_user.email,
