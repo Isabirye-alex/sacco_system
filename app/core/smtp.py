@@ -10,6 +10,7 @@ default now).
 """
 import logging
 import smtplib
+import socket
 from email.message import EmailMessage
 from typing import Optional
 
@@ -20,6 +21,15 @@ logger = logging.getLogger("sacco.smtp")
 
 class SmtpError(Exception):
     pass
+
+
+def _is_network_error(exc: Exception) -> bool:
+    if isinstance(exc, (smtplib.SMTPException, smtplib.SMTPAuthenticationError)):
+        return False
+    if isinstance(exc, (socket.error, TimeoutError, ConnectionError, ConnectionRefusedError)):
+        return True
+    err_str = str(exc).lower()
+    return "unreachable" in err_str or "connection" in err_str or "refused" in err_str
 
 
 def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
@@ -59,12 +69,23 @@ def send_email(to: str, subject: str, body: str, html_body: Optional[str] = None
                     client.login(settings.SMTP_USERNAME, password)
                 client.send_message(message)
         else:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as client:
-                if use_tls:
-                    client.starttls()
-                if settings.SMTP_USERNAME:
-                    client.login(settings.SMTP_USERNAME, password)
-                client.send_message(message)
+            try:
+                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as client:
+                    if use_tls:
+                        client.starttls()
+                    if settings.SMTP_USERNAME:
+                        client.login(settings.SMTP_USERNAME, password)
+                    client.send_message(message)
+            except Exception as net_err:
+                if _is_network_error(net_err):
+                    logger.warning("Port %s unreachable (%s). Retrying via SSL on port 465...", settings.SMTP_PORT, net_err)
+                    print(f"⚠️ [SMTP FALLBACK] Port {settings.SMTP_PORT} blocked ({net_err}). Retrying via SSL port 465...", flush=True)
+                    with smtplib.SMTP_SSL(settings.SMTP_HOST, 465, timeout=15) as client:
+                        if settings.SMTP_USERNAME:
+                            client.login(settings.SMTP_USERNAME, password)
+                        client.send_message(message)
+                else:
+                    raise
         logger.info("Email successfully sent to %s via %s", to, settings.SMTP_HOST)
     except smtplib.SMTPAuthenticationError as exc:
         is_google = "gmail.com" in settings.SMTP_HOST.lower()
