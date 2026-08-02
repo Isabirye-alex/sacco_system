@@ -79,9 +79,7 @@ def send_test_email(
     target_email: str,
     current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER)), # type: ignore
 ):
-    """
-    Sends a test email to target_email to verify Google SMTP & App Password setup.
-    """
+    """Sends a test email to target_email to verify the Google Apps Script webhook setup."""
     from app.core.smtp import SmtpError, verify_smtp_connection
 
     try:

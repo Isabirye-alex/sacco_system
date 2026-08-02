@@ -1,8 +1,8 @@
 """
 Notification service: queues notifications and dispatches them through the
-configured channel (email/SMS/push). SMS (MarzSMS) and Email (SMTP) are
-real integrations; Push remains a logging stub - no push provider has been
-requested yet.
+configured channel (email/SMS/push). SMS (MarzSMS) and Email (Google Apps
+Script webhook) are the real integrations; Push remains a logging stub - no
+push provider has been requested yet.
 """
 import logging
 from datetime import datetime
