@@ -35,15 +35,7 @@ def _is_network_error(exc: Exception) -> bool:
     return "unreachable" in err_str or "connection" in err_str or "refused" in err_str
 
 
-class SmartRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        # Preserve POST method and payload across Google Apps Script 302 redirects
-        return urllib.request.Request(
-            newurl,
-            data=req.data,
-            headers=dict(req.headers),
-            method=req.get_method()
-        )
+import urllib.parse
 
 
 def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
@@ -51,23 +43,23 @@ def send_via_gmail_webhook(to: str, subject: str, body: str, html_body: Optional
     if not webhook_url:
         return False
     
-    req_data = {
+    query_params = {
         "to": to,
         "subject": subject,
         "body": body,
         "html_body": html_body or body
     }
     
-    opener = urllib.request.build_opener(SmartRedirectHandler())
-    json_bytes = json.dumps(req_data).encode("utf-8")
+    delimiter = "&" if "?" in webhook_url else "?"
+    full_url = f"{webhook_url}{delimiter}{urllib.parse.urlencode(query_params)}"
+
     req = urllib.request.Request(
-        webhook_url,
-        data=json_bytes,
-        headers={"Content-Type": "application/json"},
-        method="POST"
+        full_url,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        method="GET"
     )
     try:
-        with opener.open(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             resp_str = resp.read().decode("utf-8", errors="ignore")
             if resp.status in (200, 201) or "success" in resp_str.lower():
                 logger.info("Email sent to %s via Google Apps Script Webhook", to)
