@@ -7,7 +7,7 @@ from app.schemas.common import ORMBase
 class VaultCreate(BaseModel):
     member_id: str
     name: str = Field(..., description="Target vault name e.g. Land Purchase, Emergency Fund")
-    vault_type: str = Field("GOAL", description="'GOAL' or 'FIXED_DEPOSIT'")
+    vault_type: Optional[str] = Field("GOAL", description="Vault type or category e.g. GOAL, FIXED_DEPOSIT, emergency, education, custom")
     target_amount: Decimal = Field(..., gt=Decimal("0.00"), description="Target goal amount")
     lock_period_months: int = Field(6, ge=1, le=120, description="Lock period in months")
     interest_rate_annual: Decimal = Field(Decimal("5.00"), ge=Decimal("0.00"))
