@@ -108,13 +108,13 @@ def upgrade() -> None:
     """)
     op.execute("""
         UPDATE referrals
-        SET referrer_id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
-        WHERE referrer_id IS NULL;
+        SET referred_user_id = (
+            SELECT u.id FROM users u WHERE u.member_id = referrals.registered_member_id LIMIT 1
+        )
+        WHERE referred_user_id IS NULL AND registered_member_id IS NOT NULL;
     """)
     op.execute("""
-        UPDATE referrals
-        SET referred_user_id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
-        WHERE referred_user_id IS NULL;
+        DELETE FROM referrals WHERE referrer_id IS NULL OR referred_user_id IS NULL;
     """)
     op.alter_column('referrals', 'referrer_id',
                existing_type=sa.VARCHAR(length=36),

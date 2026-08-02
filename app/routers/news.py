@@ -26,6 +26,69 @@ STAFF_ROLES = (
 )
 
 
+DEFAULT_SEED_NEWS = [
+    {
+        "title": "SACCO AGM 2026 Scheduled",
+        "content": "Annual General Meeting set for August 30th — all members expected to attend.",
+        "category": "EVENT",
+        "priority": "HIGH",
+        "icon": "fa-bell",
+    },
+    {
+        "title": "Q2 Dividends Approved",
+        "content": "Q2 dividends of 14% approved and will be credited to share accounts by July 25th.",
+        "category": "DIVIDEND",
+        "priority": "HIGH",
+        "icon": "fa-chart-line",
+    },
+    {
+        "title": "Emergency Loan Limit Increased",
+        "content": "Emergency loan limit increased to UGX 10,000,000 for active members.",
+        "category": "ANNOUNCEMENT",
+        "priority": "NORMAL",
+        "icon": "fa-hand-holding-dollar",
+    },
+    {
+        "title": "New Fixed Deposit Product",
+        "content": "New Fixed Deposit product launched — earn up to 16% p.a. on savings above UGX 2M.",
+        "category": "PRODUCT",
+        "priority": "NORMAL",
+        "icon": "fa-piggy-bank",
+    },
+    {
+        "title": "Top Savers of Q2",
+        "content": "Top Savers of Q2 will be awarded at the next member meeting — keep saving!",
+        "category": "ANNOUNCEMENT",
+        "priority": "NORMAL",
+        "icon": "fa-trophy",
+    },
+    {
+        "title": "Scheduled System Maintenance",
+        "content": "System upgrade on Saturday 2:00–4:00 AM EAT. Portal may be temporarily unavailable.",
+        "category": "ALERT",
+        "priority": "URGENT",
+        "icon": "fa-shield-halved",
+    },
+]
+
+
+def seed_default_news_if_empty(db: Session):
+    if db.query(News).first() is None:
+        now = datetime.utcnow()
+        for item in DEFAULT_SEED_NEWS:
+            news = News(
+                title=item["title"],
+                content=item["content"],
+                category=item["category"],
+                priority=item["priority"],
+                icon=item["icon"],
+                is_published=True,
+                published_at=now,
+            )
+            db.add(news)
+        db.commit()
+
+
 @router.get("", response_model=List[NewsRead])
 def list_published_news(
     category: Optional[str] = Query(None),
@@ -35,6 +98,7 @@ def list_published_news(
     """
     Get published Sacco news for members and public displays.
     """
+    seed_default_news_if_empty(db)
     now = datetime.utcnow()
     query = db.query(News).filter(News.is_published.is_(True))
 
@@ -57,6 +121,7 @@ def list_all_news_for_admin(
     """
     List all news items (including drafts and expired) for staff/admin dashboard.
     """
+    seed_default_news_if_empty(db)
     query = db.query(News)
     if category:
         query = query.filter(News.category.ilike(category))
