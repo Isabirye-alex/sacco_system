@@ -113,3 +113,32 @@ def test_withdrawal_records_sms_and_email_events_for_client(client, teller_heade
 
     assert sms_event is not None
     assert email_event is not None
+
+
+def test_large_deposit_aml_flagging(client, teller_headers, manager_headers, db_session):
+    from app.core.enums import RiskFlagType
+    from app.models.risk_compliance import RiskFlag
+
+    member = _create_member(client, teller_headers, "NID-AML1")
+    product = _create_product(client, manager_headers)
+
+    account = client.post(
+        "/api/v1/savings/accounts",
+        json={"member_id": member["id"], "product_id": product["id"]},
+        headers=teller_headers,
+    ).json()
+
+    deposit = client.post(
+        f"/api/v1/savings/accounts/{account['id']}/transactions",
+        json={"txn_type": "deposit", "amount": "6000000", "narrative": "Large deposit test"},
+        headers=teller_headers,
+    )
+    assert deposit.status_code == 201, deposit.text
+    assert float(deposit.json()["balance_after"]) == 6000000.0
+
+    flag = db_session.query(RiskFlag).filter(
+        RiskFlag.member_id == member["id"],
+        RiskFlag.flag_type == RiskFlagType.AML_SUSPICIOUS_DEPOSIT,
+    ).first()
+    assert flag is not None
+    assert "Large deposit of 6000000" in flag.description

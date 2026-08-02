@@ -178,17 +178,17 @@ def post_savings_transaction(
     post_savings_transaction_gl(db, account, txn, channel=payload.channel, performed_by_user_id=current_user.id)
 
     if payload.txn_type == SavingsTxnType.DEPOSIT:
-        notify_deposit(db, account.member, account.account_number, payload.amount, new_balance)
         # Automated AML Deposit Flagging
         if payload.amount >= Decimal("5000000"):
+            from app.core.enums import RiskFlagType
             from app.models.risk_compliance import RiskFlag
             risk_flag = RiskFlag(
                 member_id=account.member_id,
-                flag_type="AML_LARGE_DEPOSIT",
-                severity="HIGH",
+                flag_type=RiskFlagType.AML_SUSPICIOUS_DEPOSIT,
                 description=f"Automated AML Alert: Large deposit of {payload.amount} UGX on account {account.account_number}",
             )
             db.add(risk_flag)
+        notify_deposit(db, account.member, account.account_number, payload.amount, new_balance)
     elif payload.txn_type == SavingsTxnType.WITHDRAWAL:
         notify_withdrawal(db, account.member, account.account_number, payload.amount, new_balance)
 
